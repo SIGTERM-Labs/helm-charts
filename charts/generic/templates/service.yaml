@@ -1,0 +1,31 @@
+{{- if .Values.service.enabled -}}
+{{- $containerPortName := .Values.deployment.containerPortName }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "generic.fullname" . }}
+  labels:
+    {{- include "generic.labels" . | nindent 4 }}
+    {{- with .Values.service.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  {{- if and .Values.service.loadBalancerClass (ne .Values.service.loadBalancerClass "") }}
+  loadBalancerClass: {{ .Values.service.loadBalancerClass }}
+  {{- end }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ $containerPortName }}
+      protocol: TCP
+      name: {{ $containerPortName }}
+  {{- with .Values.service.additionalPorts }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    {{- include "generic.selectorLabels" . | nindent 4 }}
+{{- end}}

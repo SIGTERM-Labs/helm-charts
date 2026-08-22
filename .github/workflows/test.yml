@@ -1,11 +1,6 @@
-name: Test Helm Chart
+name: Test Charts
 
-on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'charts/**'
-      - '.github/workflows/helm-test.yml'
+on: pull_request
 
 jobs:
   oauth2-proxy-test:
@@ -26,3 +21,541 @@ jobs:
           helm template proxy charts/oauth2-proxy \
             --values charts/oauth2-proxy/values.yaml \
             --debug
+
+  install-charts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@v1
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install generic chart (deployment mode)
+        uses: Chia-Network/actions/helm/deploy@main
+        with:
+          namespace: "generic"
+          app_name: "generic-test"
+          helm_chart: "./charts/generic"
+          helm_values: "./charts/generic/values.yaml"
+
+      - name: Verify generic chart created Deployment
+        run: |
+          kubectl get deployment generic-test -n generic
+          if [ $? -eq 0 ]; then
+            echo "✓ Deployment 'generic-test' exists in namespace 'generic'"
+          else
+            echo "✗ Deployment 'generic-test' not found"
+            exit 1
+          fi
+          # Verify StatefulSet does NOT exist
+          if kubectl get statefulset generic-test -n generic 2>/dev/null; then
+            echo "✗ Unexpected StatefulSet found (should be Deployment)"
+            exit 1
+          else
+            echo "✓ No StatefulSet found (correct)"
+          fi
+
+      - name: Test generic chart (stateful mode)
+        uses: Chia-Network/actions/helm/deploy@main
+        with:
+          namespace: "generic-stateful-mode"
+          app_name: "generic-stateful-mode-test"
+          helm_chart: "./charts/generic"
+          helm_values: "./charts/generic/test-values-stateful.yaml"
+
+      - name: Verify generic chart (stateful mode) created StatefulSet
+        run: |
+          kubectl get statefulset generic-stateful-mode-test -n generic-stateful-mode
+          if [ $? -eq 0 ]; then
+            echo "✓ StatefulSet 'generic-stateful-mode-test' exists in namespace 'generic-stateful-mode'"
+          else
+            echo "✗ StatefulSet 'generic-stateful-mode-test' not found"
+            exit 1
+          fi
+          # Verify Deployment does NOT exist
+          if kubectl get deployment generic-stateful-mode-test -n generic-stateful-mode 2>/dev/null; then
+            echo "✗ Unexpected Deployment found (should be StatefulSet)"
+            exit 1
+          else
+            echo "✓ No Deployment found (correct)"
+          fi
+
+      - name: Test volume restrictions - Deployment with RWO and replicas > 1 (should fail)
+        run: |
+          set +e
+          helm template test ./charts/generic -f ./charts/generic/test-values-deployment-rwo-fail.yaml 2>&1 | tee /tmp/helm-output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for RWO volume with replicas > 1, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "cannot be used with deployments when replicaCount > 1" /tmp/helm-output.txt; then
+            echo "✓ Validation correctly failed for RWO volume with replicas > 1"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/helm-output.txt
+            exit 1
+          fi
+
+      - name: Test volume restrictions - Deployment with RWX and replicas > 1 (should succeed)
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-deployment-rwx-success.yaml > /dev/null
+          if [ $? -eq 0 ]; then
+            echo "✓ Validation passed for RWX volume with replicas > 1"
+          else
+            echo "✗ Unexpected failure for RWX volume with replicas > 1"
+            exit 1
+          fi
+
+      - name: Test volume restrictions - StatefulSet with RWO and replicas > 1 (should succeed)
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-stateful.yaml > /dev/null
+          if [ $? -eq 0 ]; then
+            echo "✓ Validation passed for StatefulSet with RWO volume and replicas > 1"
+          else
+            echo "✗ Unexpected failure for StatefulSet with RWO volume and replicas > 1"
+            exit 1
+          fi
+
+      - name: Test PersistentVolumes - verify no PV created by default
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-pv-default.yaml > /tmp/pv-default-output.yaml
+          if grep -q "kind: PersistentVolume" /tmp/pv-default-output.yaml; then
+            echo "✗ Unexpected PersistentVolume found in default values output"
+            exit 1
+          else
+            echo "✓ No PersistentVolume created by default (correct)"
+          fi
+
+      - name: Test PersistentVolumes - verify PVs can be created
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-pv-created.yaml > /tmp/pv-created-output.yaml
+          PV_COUNT=$(grep -c "kind: PersistentVolume" /tmp/pv-created-output.yaml || echo "0")
+          if [ "$PV_COUNT" -eq 2 ]; then
+            echo "✓ Correctly created 2 PersistentVolumes"
+          else
+            echo "✗ Expected 2 PersistentVolumes, found $PV_COUNT"
+            exit 1
+          fi
+          # Verify PV names
+          if grep -q "name: test-pv-1" /tmp/pv-created-output.yaml && grep -q "name: test-pv-2" /tmp/pv-created-output.yaml; then
+            echo "✓ Both PVs have correct names"
+          else
+            echo "✗ PV names not found as expected"
+            exit 1
+          fi
+          # Verify PV specs
+          if grep -q "storage: 10Gi" /tmp/pv-created-output.yaml && grep -q "storage: 5Gi" /tmp/pv-created-output.yaml; then
+            echo "✓ PVs have correct storage sizes"
+          else
+            echo "✗ PV storage sizes not found as expected"
+            exit 1
+          fi
+
+      - name: Test job mode - verify template structure
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-job.yaml > /tmp/job-output.yaml
+          # Must produce a Job, not a Deployment or StatefulSet
+          if grep -q "kind: Job" /tmp/job-output.yaml; then
+            echo "✓ Job resource found"
+          else
+            echo "✗ Job resource not found"
+            exit 1
+          fi
+          if kubectl get deployment generic-job-mode-test -n generic-job-mode 2>/dev/null || grep -q "kind: Deployment" /tmp/job-output.yaml; then
+            echo "✗ Unexpected Deployment found in job mode output"
+            exit 1
+          else
+            echo "✓ No Deployment in job mode output (correct)"
+          fi
+          # Must have Helm hook annotations for re-run-on-upgrade behavior
+          if grep -q "helm.sh/hook" /tmp/job-output.yaml; then
+            echo "✓ Helm hook annotations present"
+          else
+            echo "✗ Missing helm hook annotations on Job"
+            exit 1
+          fi
+          if grep -q "before-hook-creation" /tmp/job-output.yaml; then
+            echo "✓ before-hook-creation delete policy present"
+          else
+            echo "✗ Missing before-hook-creation delete policy"
+            exit 1
+          fi
+
+      - name: Test job mode - install
+        uses: Chia-Network/actions/helm/deploy@main
+        with:
+          namespace: "generic-job-mode"
+          app_name: "generic-job-mode-test"
+          helm_chart: "./charts/generic"
+          helm_values: "./charts/generic/test-values-job.yaml"
+
+      - name: Test job mode - verify Job ran after install
+        run: |
+          # Wait for the hook Job to complete
+          set +e
+          kubectl wait --for=condition=complete job/generic-job-mode-test \
+            -n generic-job-mode --timeout=60s
+          JOB_EXIT=$?
+          set -e
+          if [ $JOB_EXIT -eq 0 ]; then
+            echo "✓ Job completed successfully after helm install"
+          else
+            echo "✗ Job did not complete within timeout"
+            kubectl describe job generic-job-mode-test -n generic-job-mode
+            exit 1
+          fi
+          # Verify no Deployment was created
+          if kubectl get deployment generic-job-mode-test -n generic-job-mode 2>/dev/null; then
+            echo "✗ Unexpected Deployment found (should only be a Job)"
+            exit 1
+          else
+            echo "✓ No Deployment found (correct)"
+          fi
+
+      - name: Test job mode - upgrade re-runs the job
+        uses: Chia-Network/actions/helm/deploy@main
+        with:
+          namespace: "generic-job-mode"
+          app_name: "generic-job-mode-test"
+          helm_chart: "./charts/generic"
+          helm_values: "./charts/generic/test-values-job.yaml"
+
+      - name: Test job mode - verify Job ran again after upgrade
+        run: |
+          set +e
+          kubectl wait --for=condition=complete job/generic-job-mode-test \
+            -n generic-job-mode --timeout=60s
+          JOB_EXIT=$?
+          set -e
+          if [ $JOB_EXIT -eq 0 ]; then
+            echo "✓ Job completed successfully after helm upgrade (old job was deleted and re-created)"
+          else
+            echo "✗ Job did not complete within timeout after upgrade"
+            kubectl describe job generic-job-mode-test -n generic-job-mode
+            exit 1
+          fi
+
+      - name: Test cronjob mode - verify template structure
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-cronjob.yaml > /tmp/cronjob-output.yaml
+          # Must produce a CronJob, not a Deployment or StatefulSet
+          if grep -q "kind: CronJob" /tmp/cronjob-output.yaml; then
+            echo "✓ CronJob resource found"
+          else
+            echo "✗ CronJob resource not found"
+            exit 1
+          fi
+          if grep -q "kind: Deployment" /tmp/cronjob-output.yaml; then
+            echo "✗ Unexpected Deployment found in cronjob mode output"
+            exit 1
+          else
+            echo "✓ No Deployment in cronjob mode output (correct)"
+          fi
+          # Must not have Helm hook annotations (CronJob is a normal release resource)
+          if grep -q "helm.sh/hook" /tmp/cronjob-output.yaml; then
+            echo "✗ Unexpected Helm hook annotations on CronJob (should only be on Job mode)"
+            exit 1
+          else
+            echo "✓ No Helm hook annotations on CronJob (correct)"
+          fi
+          # Verify schedule is rendered
+          if grep -q 'schedule: "\*/5 \* \* \* \*"' /tmp/cronjob-output.yaml; then
+            echo "✓ Schedule rendered correctly"
+          else
+            echo "✗ Schedule not found in CronJob output"
+            exit 1
+          fi
+
+      - name: Test cronjob mode - install
+        uses: Chia-Network/actions/helm/deploy@main
+        with:
+          namespace: "generic-cronjob-mode"
+          app_name: "generic-cronjob-mode-test"
+          helm_chart: "./charts/generic"
+          helm_values: "./charts/generic/test-values-cronjob.yaml"
+
+      - name: Test cronjob mode - verify CronJob created
+        run: |
+          kubectl get cronjob generic-cronjob-mode-test -n generic-cronjob-mode
+          if [ $? -eq 0 ]; then
+            echo "✓ CronJob 'generic-cronjob-mode-test' exists in namespace 'generic-cronjob-mode'"
+          else
+            echo "✗ CronJob not found"
+            exit 1
+          fi
+          # Verify no Deployment was created
+          if kubectl get deployment generic-cronjob-mode-test -n generic-cronjob-mode 2>/dev/null; then
+            echo "✗ Unexpected Deployment found (should only be a CronJob)"
+            exit 1
+          else
+            echo "✓ No Deployment found (correct)"
+          fi
+
+      - name: Test cronjob mode - missing schedule should fail
+        run: |
+          set +e
+          helm template test ./charts/generic --set mode=cronjob 2>&1 | tee /tmp/cronjob-no-schedule.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for cronjob without schedule, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "job.schedule is required" /tmp/cronjob-no-schedule.txt; then
+            echo "✓ Validation correctly failed with expected error message"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/cronjob-no-schedule.txt
+            exit 1
+          fi
+
+      - name: Test Contour HTTPProxy and cert-manager Certificate - verify template structure
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-contour-cert.yaml > /tmp/contour-cert-output.yaml
+          # Contour HTTPProxy must be rendered
+          if grep -q "kind: HTTPProxy" /tmp/contour-cert-output.yaml; then
+            echo "✓ HTTPProxy resource found"
+          else
+            echo "✗ HTTPProxy resource not found"
+            cat /tmp/contour-cert-output.yaml
+            exit 1
+          fi
+          if grep -q "fqdn: chart-example.local" /tmp/contour-cert-output.yaml; then
+            echo "✓ HTTPProxy virtualhost fqdn rendered"
+          else
+            echo "✗ HTTPProxy virtualhost fqdn not found"
+            exit 1
+          fi
+          # cert-manager Certificate must be rendered into the same tls secret
+          if grep -q "kind: Certificate" /tmp/contour-cert-output.yaml; then
+            echo "✓ Certificate resource found"
+          else
+            echo "✗ Certificate resource not found"
+            cat /tmp/contour-cert-output.yaml
+            exit 1
+          fi
+          if grep -q "apiVersion: cert-manager.io/v1" /tmp/contour-cert-output.yaml; then
+            echo "✓ Certificate uses cert-manager.io/v1 apiVersion"
+          else
+            echo "✗ Certificate apiVersion not found"
+            cat /tmp/contour-cert-output.yaml
+            exit 1
+          fi
+          if grep -q "secretName: test-tls" /tmp/contour-cert-output.yaml; then
+            echo "✓ Certificate/HTTPProxy default tls secret name (<release>-tls) rendered"
+          else
+            echo "✗ Expected default tls secret name 'test-tls' not found"
+            cat /tmp/contour-cert-output.yaml
+            exit 1
+          fi
+
+      - name: Test Contour/cert-manager disabled by default
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/values.yaml > /tmp/default-output.yaml
+          if grep -q "kind: HTTPProxy" /tmp/default-output.yaml || grep -q "kind: Certificate" /tmp/default-output.yaml; then
+            echo "✗ HTTPProxy/Certificate rendered by default (should be disabled)"
+            exit 1
+          else
+            echo "✓ No HTTPProxy/Certificate rendered by default (correct)"
+          fi
+
+      - name: Test Contour HTTPProxy - default route without a Service should fail
+        run: |
+          set +e
+          helm template test ./charts/generic \
+            --set contour.httpProxy.enabled=true 2>&1 | tee /tmp/httpproxy-no-svc.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for HTTPProxy default route without a Service, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "service.enabled is false" /tmp/httpproxy-no-svc.txt; then
+            echo "✓ Validation correctly failed with expected error message"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/httpproxy-no-svc.txt
+            exit 1
+          fi
+
+      - name: Test Contour HTTPProxy - empty fqdn should fail
+        run: |
+          set +e
+          helm template test ./charts/generic \
+            --set service.enabled=true \
+            --set contour.httpProxy.enabled=true \
+            --set contour.httpProxy.fqdn="" 2>&1 | tee /tmp/httpproxy-no-fqdn.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for HTTPProxy with empty fqdn, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "contour.httpProxy.fqdn is empty" /tmp/httpproxy-no-fqdn.txt; then
+            echo "✓ Validation correctly failed with expected error message"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/httpproxy-no-fqdn.txt
+            exit 1
+          fi
+
+      - name: Test Contour HTTPProxy - custom routes without a Service should render
+        run: |
+          helm template test ./charts/generic \
+            --set contour.httpProxy.enabled=true \
+            --set 'contour.httpProxy.routes[0].services[0].name=other-svc' \
+            --set 'contour.httpProxy.routes[0].services[0].port=8080' > /tmp/httpproxy-custom.yaml
+          if grep -q "name: other-svc" /tmp/httpproxy-custom.yaml; then
+            echo "✓ HTTPProxy with custom routes renders without requiring service.enabled"
+          else
+            echo "✗ HTTPProxy custom routes not rendered as expected"
+            cat /tmp/httpproxy-custom.yaml
+            exit 1
+          fi
+
+      - name: Test Contour HTTPProxy - TLS passthrough uses tcpproxy, not HTTP routes
+        run: |
+          helm template test ./charts/generic \
+            --set service.enabled=true \
+            --set contour.httpProxy.enabled=true \
+            --set contour.httpProxy.fqdn=passthrough.example.com \
+            --set contour.httpProxy.tls.passthrough=true > /tmp/httpproxy-passthrough.yaml
+          if grep -q "tcpproxy:" /tmp/httpproxy-passthrough.yaml; then
+            echo "✓ Passthrough HTTPProxy routes via tcpproxy"
+          else
+            echo "✗ Passthrough HTTPProxy missing tcpproxy"
+            cat /tmp/httpproxy-passthrough.yaml
+            exit 1
+          fi
+          if grep -q "routes:" /tmp/httpproxy-passthrough.yaml; then
+            echo "✗ Passthrough HTTPProxy should not render HTTP routes"
+            cat /tmp/httpproxy-passthrough.yaml
+            exit 1
+          else
+            echo "✓ Passthrough HTTPProxy does not render HTTP routes"
+          fi
+
+      - name: Test certificates - verify Certificates can be created
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-certificates.yaml > /tmp/cert-output.yaml
+          CERT_COUNT=$(grep -c "kind: Certificate" /tmp/cert-output.yaml || echo "0")
+          if [ "$CERT_COUNT" -eq 2 ]; then
+            echo "✓ Correctly created 2 Certificates"
+          else
+            echo "✗ Expected 2 Certificates, found $CERT_COUNT"
+            exit 1
+          fi
+          if grep -q "apiVersion: cert-manager.io/v1" /tmp/cert-output.yaml; then
+            echo "✓ Certificate uses cert-manager.io/v1 apiVersion"
+          else
+            echo "✗ Certificate apiVersion not found"
+            exit 1
+          fi
+          if grep -q "name: test-cert-primary" /tmp/cert-output.yaml; then
+            echo "✓ Named Certificate has correct name"
+          else
+            echo "✗ Named Certificate not found"
+            exit 1
+          fi
+          if grep -q "secretName: test-cert-primary-tls" /tmp/cert-output.yaml; then
+            echo "✓ Certificate spec passed through correctly"
+          else
+            echo "✗ Certificate spec not passed through"
+            exit 1
+          fi
+          # Unnamed second entry must fall back to an indexed fullname
+          if grep -q "name: test-generic-1" /tmp/cert-output.yaml; then
+            echo "✓ Unnamed Certificate defaults to indexed fullname"
+          else
+            echo "✗ Unnamed Certificate name not defaulted as expected"
+            cat /tmp/cert-output.yaml
+            exit 1
+          fi
+
+      - name: Test certificates - missing spec should fail
+        run: |
+          set +e
+          helm template test ./charts/generic --set 'certificates[0].name=missing-spec' 2>&1 | tee /tmp/cert-missing-spec.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for certificate without spec, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "certificates\[0\].spec is required" /tmp/cert-missing-spec.txt; then
+            echo "✓ Validation correctly failed with expected error message"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/cert-missing-spec.txt
+            exit 1
+          fi
+
+      - name: Test additionalIngresses - verify no Ingress created by default
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/values.yaml > /tmp/additional-ingress-default.yaml
+          if grep -q "kind: Ingress" /tmp/additional-ingress-default.yaml; then
+            echo "✗ Unexpected Ingress found in default values output"
+            exit 1
+          else
+            echo "✓ No Ingress created by default (correct)"
+          fi
+
+      - name: Test additionalIngresses - verify Ingresses can be created
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-additional-ingresses.yaml > /tmp/additional-ingress-output.yaml
+          INGRESS_COUNT=$(grep -c "kind: Ingress" /tmp/additional-ingress-output.yaml || echo "0")
+          if [ "$INGRESS_COUNT" -eq 3 ]; then
+            echo "✓ Correctly created 3 additional Ingresses"
+          else
+            echo "✗ Expected 3 Ingresses, found $INGRESS_COUNT"
+            cat /tmp/additional-ingress-output.yaml
+            exit 1
+          fi
+          if grep -q "name: test-ingress-primary" /tmp/additional-ingress-output.yaml; then
+            echo "✓ Named Ingress has correct name"
+          else
+            echo "✗ Named Ingress not found"
+            exit 1
+          fi
+          # Unnamed second entry must fall back to an indexed fullname
+          if grep -q "name: test-generic-2" /tmp/additional-ingress-output.yaml; then
+            echo "✓ Unnamed Ingress defaults to indexed fullname"
+          else
+            echo "✗ Unnamed Ingress name not defaulted as expected"
+            cat /tmp/additional-ingress-output.yaml
+            exit 1
+          fi
+          # Custom serviceName/servicePort must be honored in the backend
+          if grep -q "name: other-svc" /tmp/additional-ingress-output.yaml; then
+            echo "✓ Custom backend serviceName honored"
+          else
+            echo "✗ Custom backend serviceName not found"
+            cat /tmp/additional-ingress-output.yaml
+            exit 1
+          fi
+          # TLS secret name must render even though tlsEnabled/tlsSecretEnabled are
+          # omitted (they must default to true, matching the primary ingress). Rendered quoted.
+          if grep -q 'secretName: "test-ingress-primary-tls"' /tmp/additional-ingress-output.yaml; then
+            echo "✓ TLS secretName renders by default (tlsSecretEnabled defaults to true)"
+          else
+            echo "✗ TLS secretName not found"
+            cat /tmp/additional-ingress-output.yaml
+            exit 1
+          fi
+          # A defaultBackend-only entry must render an Ingress even without hosts
+          if grep -q "name: test-ingress-default-backend" /tmp/additional-ingress-output.yaml \
+            && grep -q "defaultBackend:" /tmp/additional-ingress-output.yaml; then
+            echo "✓ defaultBackend-only Ingress renders without hosts"
+          else
+            echo "✗ defaultBackend-only Ingress not rendered as expected"
+            cat /tmp/additional-ingress-output.yaml
+            exit 1
+          fi

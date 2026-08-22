@@ -1,0 +1,60 @@
+{{- if .Values.contour.httpProxy.enabled -}}
+{{- $fullName := include "generic.fullname" . -}}
+{{- $svcPort := .Values.service.port -}}
+{{- $httpProxy := .Values.contour.httpProxy -}}
+{{- $passthrough := and $httpProxy.tls.enabled $httpProxy.tls.passthrough -}}
+{{- if not $httpProxy.fqdn }}
+{{- fail "contour.httpProxy.enabled is true but contour.httpProxy.fqdn is empty. Provide the fully qualified domain name the HTTPProxy should answer for." }}
+{{- end }}
+{{- if and (not $httpProxy.routes) (not $httpProxy.tcpproxy) (not .Values.service.enabled) }}
+{{- fail "contour.httpProxy.enabled is true and relies on the default route to the chart Service, but service.enabled is false. Set service.enabled=true, or provide contour.httpProxy.routes/tcpproxy that reference existing services." }}
+{{- end }}
+apiVersion: projectcontour.io/v1
+kind: HTTPProxy
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "generic.labels" . | nindent 4 }}
+  {{- with $httpProxy.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  virtualhost:
+    fqdn: {{ $httpProxy.fqdn }}
+    {{- if $httpProxy.tls.enabled }}
+    tls:
+      {{- if $httpProxy.tls.passthrough }}
+      passthrough: true
+      {{- else }}
+      secretName: {{ $httpProxy.tls.secretName | default (printf "%s-tls" .Release.Name) }}
+      {{- with $httpProxy.tls.minimumProtocolVersion }}
+      minimumProtocolVersion: {{ . | quote }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- with $httpProxy.includes }}
+  includes:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if $httpProxy.routes }}
+  routes:
+    {{- toYaml $httpProxy.routes | nindent 4 }}
+  {{- else if $httpProxy.tcpproxy }}
+  tcpproxy:
+    {{- toYaml $httpProxy.tcpproxy | nindent 4 }}
+  {{- else if $passthrough }}
+  {{- /* TLS passthrough terminates at the backend, so Contour routes at L4 via tcpproxy (not HTTP routes/services). */}}
+  tcpproxy:
+    services:
+      - name: {{ $fullName }}
+        port: {{ $svcPort }}
+  {{- else }}
+  routes:
+    - conditions:
+        - prefix: /
+      services:
+        - name: {{ $fullName }}
+          port: {{ $svcPort }}
+  {{- end }}
+{{- end }}

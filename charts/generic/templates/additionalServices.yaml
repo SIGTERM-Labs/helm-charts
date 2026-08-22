@@ -1,0 +1,32 @@
+{{- if .Values.additionalServices -}}
+{{- range $i, $svc := $.Values.additionalServices }}
+{{- if .ports }}
+apiVersion: v1
+kind: Service
+metadata:
+  {{- $name := (default (printf "%s-%d" (include "generic.fullname" $) (add $i 1)) $svc.name) }}
+  name: {{ $name }}
+  labels:
+    {{- include "generic.labels" $ | nindent 4 }}
+    {{- with $svc.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $svc.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $svc.type }}
+  {{- if and $svc.loadBalancerClass (ne $svc.loadBalancerClass "") }}
+  loadBalancerClass: {{ $svc.loadBalancerClass }}
+  {{- end }}
+  ports:
+    {{- toYaml $svc.ports | nindent 4 }}
+  selector:
+    {{- include "generic.selectorLabels" $ | nindent 4 }}
+    {{- with $svc.additionalSelectorLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

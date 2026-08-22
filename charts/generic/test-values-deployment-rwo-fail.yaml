@@ -1,0 +1,15 @@
+mode: deployment
+replicaCount: 2
+image:
+  repository: nginx
+  tag: latest
+deployment:
+  containerPort: 80
+  containerPortName: http
+volumes:
+  - name: data
+    mountPath: /data
+    size: 1Gi
+    storageClassName: standard
+    # ReadWriteOnce - should fail with replicas > 1
+

@@ -1,0 +1,32 @@
+# Test values to verify PersistentVolumes can be created
+mode: deployment
+replicaCount: 1
+image:
+  repository: nginx
+  tag: latest
+deployment:
+  containerPort: 80
+  containerPortName: http
+persistentVolumes:
+  - name: test-pv-1
+    labels:
+      app: test-app
+      environment: test
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
+    persistentVolumeReclaimPolicy: Retain
+    storageClassName: local-storage
+    extraYaml:
+      hostPath:
+        path: /data/test-volume
+  - name: test-pv-2
+    size: 5Gi
+    accessModes:
+      - ReadWriteMany
+    persistentVolumeReclaimPolicy: Delete
+    storageClassName: nfs-storage
+    extraYaml:
+      nfs:
+        server: 1.2.3.4
+        path: /exports/test

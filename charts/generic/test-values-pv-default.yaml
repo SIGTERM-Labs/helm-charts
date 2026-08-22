@@ -1,0 +1,9 @@
+# Minimal values to test that PersistentVolumes are NOT created by default
+mode: deployment
+replicaCount: 1
+image:
+  repository: nginx
+  tag: latest
+deployment:
+  containerPort: 80
+  containerPortName: http

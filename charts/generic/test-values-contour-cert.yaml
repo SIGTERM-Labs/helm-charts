@@ -1,0 +1,34 @@
+# Test values to verify the Contour HTTPProxy and a cert-manager Certificate
+# render together and line up: the HTTPProxy terminates TLS with the default
+# "<release>-tls" secret, and the Certificate issues into that same secret.
+mode: deployment
+replicaCount: 1
+image:
+  repository: nginx
+  tag: latest
+deployment:
+  containerPort: 80
+  containerPortName: http
+
+service:
+  enabled: true
+  type: ClusterIP
+  port: 80
+
+contour:
+  httpProxy:
+    enabled: true
+    fqdn: chart-example.local
+    tls:
+      enabled: true
+
+certificates:
+  # secretName matches the HTTPProxy default "<release>-tls" (release "test").
+  - spec:
+      secretName: test-tls
+      dnsNames:
+        - chart-example.local
+        - "*.chart-example.local"
+      issuerRef:
+        name: letsencrypt-cf
+        kind: ClusterIssuer

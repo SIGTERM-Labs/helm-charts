@@ -1,0 +1,45 @@
+# Test values to verify additional Ingress resources are rendered
+mode: deployment
+replicaCount: 1
+image:
+  repository: nginx
+  tag: latest
+deployment:
+  containerPort: 80
+  containerPortName: http
+service:
+  enabled: true
+  port: 80
+additionalIngresses:
+  - name: test-ingress-primary
+    className: nginx
+    additionalLabels:
+      ingress-tier: primary
+    annotations:
+      kubernetes.io/tls-acme: "true"
+    hosts:
+      - host: primary.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    # tlsEnabled/tlsSecretEnabled omitted on purpose: they must default to true
+    # (matching the primary ingress) so the secretName still renders.
+    tlsSecretName: test-ingress-primary-tls
+    ruleType: rules
+  # Unnamed entry: falls back to an indexed fullname. Routes to a different Service.
+  - className: nginx
+    serviceName: other-svc
+    servicePort: 8080
+    hosts:
+      - host: secondary.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+            port: 9090
+    tlsEnabled: false
+    ruleType: rules
+  # defaultBackend-only catch-all: valid with no hosts, must still render an Ingress.
+  - name: test-ingress-default-backend
+    className: nginx
+    tlsEnabled: false
+    ruleType: defaultBackend

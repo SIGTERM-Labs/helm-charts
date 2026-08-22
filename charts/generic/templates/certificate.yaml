@@ -1,0 +1,33 @@
+{{- if .Values.certificates }}
+{{- $fullName := include "generic.fullname" . -}}
+{{- $count := len .Values.certificates -}}
+{{- range $i, $cert := .Values.certificates }}
+{{- $name := $cert.name }}
+{{- if not $name }}
+{{- if eq $count 1 }}
+{{- $name = $fullName }}
+{{- else }}
+{{- $name = printf "%s-%d" $fullName $i }}
+{{- end }}
+{{- end }}
+{{- if not $cert.spec }}
+{{- fail (printf "certificates[%d].spec is required" $i) }}
+{{- end }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "generic.labels" $ | nindent 4 }}
+    {{- with $cert.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $cert.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- toYaml $cert.spec | nindent 2 }}
+{{- end }}
+{{- end }}

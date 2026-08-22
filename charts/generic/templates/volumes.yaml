@@ -1,0 +1,52 @@
+{{- if eq .Values.mode "deployment" -}}
+{{- if and (gt (int .Values.replicaCount) 1) (ne (len .Values.volumes) 0) }}
+{{- /*
+     Validation: When using deployments with multiple replicas, volumes must use ReadWriteMany (RWX) access mode.
+     ReadWriteOnce (RWO) volumes can only be mounted by a single pod, so they cannot be shared across multiple
+     replicas in a deployment. If accessModes is not specified, it defaults to ReadWriteOnce, which will fail.
+     StatefulSets use volumeClaimTemplates (one per pod) so they can use ReadWriteOnce volumes.
+  */}}
+{{- range $volume := .Values.volumes }}
+{{- $allRWX := true }}
+{{- if $volume.accessModes }}
+{{- range $mode := $volume.accessModes }}
+{{- if ne $mode "ReadWriteMany" }}
+{{- $allRWX = false }}
+{{- end }}
+{{- end }}
+{{- else }}
+{{- $allRWX = false }}
+{{- end }}
+{{- if not $allRWX }}
+{{- fail (printf "volume '%s' cannot be used with deployments when replicaCount > 1. All access modes must be ReadWriteMany for multiple replicas. Either use ReadWriteMany for all volumes or use mode: 'stateful' with volumeClaimTemplates for multiple replicas with persistent storage." $volume.name) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- $fullName := include "generic.fullname" . -}}
+{{- range .Values.volumes }}
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ $fullName }}-{{ .name }}
+spec:
+  volumeMode: {{ .volumeMode | default "Filesystem" }}
+  accessModes:
+    {{- if .accessModes }}
+    {{- toYaml .accessModes | nindent 4 }}
+    {{- else }}
+    - ReadWriteOnce
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .size }}
+  storageClassName: {{ .storageClassName | quote }}
+  {{- if .volumeName }}
+  volumeName: {{ .volumeName }}
+  {{- end }}
+  {{- if .selector }}
+  selector:
+    {{- toYaml .selector | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

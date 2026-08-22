@@ -1,0 +1,23 @@
+{{- if .Values.persistentVolumes }}
+{{- range .Values.persistentVolumes }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ .name }}
+  {{- if .labels }}
+  labels:
+    {{- toYaml .labels | nindent 4 }}
+  {{- end }}
+spec:
+  capacity:
+    storage: {{ .size }}
+  accessModes:
+    {{- toYaml .accessModes | nindent 4 }}
+  persistentVolumeReclaimPolicy: {{ .persistentVolumeReclaimPolicy }}
+  storageClassName: {{ .storageClassName | quote }}
+  {{- if .extraYaml }}
+  {{- toYaml .extraYaml | nindent 2 }}
+  {{- end }}
+{{- end }}
+{{- end }}
