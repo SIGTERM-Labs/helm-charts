@@ -1,0 +1,11 @@
+mode: job
+image:
+  repository: busybox
+  tag: latest
+  pullPolicy: IfNotPresent
+deployment:
+  command: ["echo"]
+  args: ["helm job test successful"]
+job:
+  restartPolicy: Never
+  backoffLimit: 1

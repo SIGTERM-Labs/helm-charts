@@ -1,0 +1,16 @@
+mode: deployment
+replicaCount: 3
+image:
+  repository: nginx
+  tag: latest
+deployment:
+  containerPort: 80
+  containerPortName: http
+volumes:
+  - name: data
+    mountPath: /data
+    size: 1Gi
+    storageClassName: standard
+    accessModes:
+      - ReadWriteMany
+

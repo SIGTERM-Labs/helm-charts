@@ -1,0 +1,10 @@
+{{- if and .Values.serviceAccount.create (gt (len .Values.serviceAccount.clusterRoleRules) 0) -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "generic.fullname" . }}
+{{- with .Values.serviceAccount.clusterRoleRules }}
+rules:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

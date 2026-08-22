@@ -1,0 +1,11 @@
+mode: cronjob
+image:
+  repository: busybox
+  tag: latest
+  pullPolicy: IfNotPresent
+deployment:
+  command: ["echo"]
+  args: ["helm cronjob test successful"]
+job:
+  schedule: "*/5 * * * *"
+  restartPolicy: OnFailure

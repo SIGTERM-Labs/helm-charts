@@ -1,0 +1,37 @@
+# Test values to verify cert-manager Certificate resources are rendered
+mode: deployment
+replicaCount: 1
+image:
+  repository: nginx
+  tag: latest
+deployment:
+  containerPort: 80
+  containerPortName: http
+certificates:
+  - name: test-cert-primary
+    additionalLabels:
+      cert-tier: primary
+    annotations:
+      cert-manager.io/test: "true"
+    spec:
+      secretName: test-cert-primary-tls
+      commonName: primary.example.com
+      dnsNames:
+        - primary.example.com
+        - www.primary.example.com
+      issuerRef:
+        name: letsencrypt
+        kind: ClusterIssuer
+        group: cert-manager.io
+      duration: 2160h
+      renewBefore: 360h
+      usages:
+        - server auth
+        - client auth
+  - spec:
+      secretName: test-cert-secondary-tls
+      dnsNames:
+        - secondary.example.com
+      issuerRef:
+        name: selfsigned
+        kind: Issuer

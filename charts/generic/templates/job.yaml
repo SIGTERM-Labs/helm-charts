@@ -1,0 +1,312 @@
+{{- if or (eq .Values.mode "job") (eq .Values.mode "cronjob") -}}
+{{- $fullName := include "generic.fullname" . -}}
+{{- $isJob := eq .Values.mode "job" -}}
+{{- if and (not $isJob) (not .Values.job.schedule) -}}
+{{- fail "job.schedule is required when mode is \"cronjob\" (e.g. job.schedule: \"0 2 * * *\")" -}}
+{{- end -}}
+apiVersion: batch/v1
+kind: {{ if $isJob }}Job{{ else }}CronJob{{ end }}
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "generic.labels" . | nindent 4 }}
+  {{- if $isJob }}
+  annotations:
+    # These hooks cause the Job to be deleted and re-created on every helm install/upgrade,
+    # so each deploy triggers a fresh run without needing to uninstall and reinstall.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-weight": "0"
+  {{- end }}
+spec:
+  {{- if $isJob }}
+  backoffLimit: {{ .Values.job.backoffLimit }}
+  {{- if .Values.job.activeDeadlineSeconds }}
+  activeDeadlineSeconds: {{ .Values.job.activeDeadlineSeconds }}
+  {{- end }}
+  {{- if .Values.job.ttlSecondsAfterFinished }}
+  ttlSecondsAfterFinished: {{ .Values.job.ttlSecondsAfterFinished }}
+  {{- end }}
+  completions: {{ .Values.job.completions }}
+  parallelism: {{ .Values.job.parallelism }}
+  template:
+    metadata:
+      annotations:
+      {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "generic.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- include "generic.jobPodSpec" . | nindent 6 }}
+  {{- else }}
+  schedule: {{ .Values.job.schedule | quote }}
+  concurrencyPolicy: {{ .Values.job.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.job.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.job.failedJobsHistoryLimit }}
+  suspend: {{ .Values.job.suspend }}
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "generic.labels" . | nindent 8 }}
+    spec:
+      backoffLimit: {{ .Values.job.backoffLimit }}
+      {{- if .Values.job.activeDeadlineSeconds }}
+      activeDeadlineSeconds: {{ .Values.job.activeDeadlineSeconds }}
+      {{- end }}
+      {{- if .Values.job.ttlSecondsAfterFinished }}
+      ttlSecondsAfterFinished: {{ .Values.job.ttlSecondsAfterFinished }}
+      {{- end }}
+      completions: {{ .Values.job.completions }}
+      parallelism: {{ .Values.job.parallelism }}
+      template:
+        metadata:
+          annotations:
+          {{- with .Values.podAnnotations }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          labels:
+            {{- include "generic.selectorLabels" . | nindent 12 }}
+        spec:
+          {{- include "generic.jobPodSpec" . | nindent 10 }}
+  {{- end }}
+{{- end }}
+
+{{/*
+Shared pod spec for job and cronjob modes.
+Excludes ports, probes, lifecycle hooks, sidecars, HPA, strategy, and replicas.
+*/}}
+{{- define "generic.jobPodSpec" -}}
+restartPolicy: {{ .Values.job.restartPolicy }}
+{{- with .Values.imagePullSecrets }}
+imagePullSecrets:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+serviceAccountName: {{ include "generic.serviceAccountName" . }}
+securityContext:
+  {{- toYaml .Values.podSecurityContext | nindent 2 }}
+{{- with .Values.initContainers }}
+initContainers:
+{{- range $.Values.initContainers }}
+  - name: {{ .name }}
+    image: {{ .image }}
+    imagePullPolicy: {{ default "IfNotPresent" .imagePullPolicy }}
+    {{- if .command }}
+    command:
+      {{- range .command }}
+      - {{ . | quote }}
+      {{- end }}
+    {{- end }}
+    {{- if .args }}
+    args:
+      {{- range .args }}
+      - {{ . | quote }}
+      {{- end }}
+    {{- end }}
+    securityContext:
+      {{- toYaml $.Values.securityContext | nindent 6 }}
+    {{- with $.Values.deployment.environment }}
+    env:
+      {{- range $key, $value := . }}
+      - name: "{{ $key }}"
+        value: "{{ $value }}"
+      {{- end }}
+    {{- end }}
+    envFrom:
+      - secretRef:
+          name: "{{ $.Release.Name }}-env"
+          optional: false
+      {{- range $.Values.externalSecretEnvironment }}
+      - secretRef:
+          name: "{{ .name }}"
+      {{- end }}
+      - configMapRef:
+          name: "{{ $.Release.Name }}-env"
+      {{- range $.Values.externalConfigmapEnvironment }}
+      - configMapRef:
+          name: "{{ .name }}"
+      {{- end }}
+    volumeMounts:
+      {{- range $.Values.sharedEmptyDirs }}
+      - name: {{ .name }}
+        mountPath: {{ .mountPath }}
+      {{- end }}
+      - name: secret-file
+        mountPath: {{ $.Values.secretFile.mountPath }}
+        {{- if $.Values.secretFile.subPath }}
+        subPath: {{ $.Values.secretFile.subPath }}
+        {{- end }}
+      - name: configmap-file
+        mountPath: {{ $.Values.configmapFile.mountPath }}
+      {{- range $.Values.configmapFiles }}
+      - name: configmap-files
+        mountPath: {{ .mountPath }}/{{ .filename }}
+        subPath: {{ .filename }}
+      {{- end }}
+      {{- range $.Values.secretFiles }}
+      - name: secret-files
+        mountPath: {{ .mountPath }}/{{ .filename }}
+        subPath: {{ .filename }}
+      {{- end }}
+      {{- range $ext := $.Values.externalSecretFiles }}
+      {{- range $file := $ext.files }}
+      - name: ext-s-{{ $ext.secretName }}
+        mountPath: {{ $file.mountPath }}/{{ $file.filename }}
+        subPath: {{ $file.filename }}
+      {{- end }}
+      {{- end }}
+      {{- range $.Values.externalVolumes }}
+      - name: {{ .name }}
+        mountPath: {{ .mountPath }}
+        readOnly: {{ .readOnly }}
+      {{- end }}
+      {{- range $.Values.hostVolumes }}
+      - name: {{ .name }}
+        mountPath: {{ .mountPath }}
+      {{- end }}
+{{- end }}
+{{- end }}
+containers:
+  - name: {{ .Chart.Name }}
+    securityContext:
+      {{- toYaml .Values.securityContext | nindent 6 }}
+    image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+    imagePullPolicy: {{ .Values.image.pullPolicy }}
+    {{- if .Values.deployment.command }}
+    command:
+      {{- toYaml .Values.deployment.command | nindent 6 }}
+    {{- end }}
+    {{- if .Values.deployment.args }}
+    args:
+      {{- toYaml .Values.deployment.args | nindent 6 }}
+    {{- end }}
+    {{- with .Values.deployment.environment }}
+    env:
+      {{- range $key, $value := . }}
+      - name: "{{ $key }}"
+        value: "{{ $value }}"
+      {{- end }}
+    {{- end }}
+    envFrom:
+      {{- if .Values.deployment.secretEnvironment }}
+      - secretRef:
+          name: "{{ .Release.Name }}-main-env"
+          optional: false
+      {{- end }}
+      - secretRef:
+          name: "{{ .Release.Name }}-env"
+          optional: false
+      {{- range .Values.externalSecretEnvironment }}
+      - secretRef:
+          name: "{{ .name }}"
+      {{- end }}
+      - configMapRef:
+          name: "{{ .Release.Name }}-env"
+      {{- range .Values.externalConfigmapEnvironment }}
+      - configMapRef:
+          name: "{{ .name }}"
+      {{- end }}
+    volumeMounts:
+      {{- range .Values.sharedEmptyDirs }}
+      - name: {{ .name }}
+        mountPath: {{ .mountPath }}
+      {{- end }}
+      - name: secret-file
+        mountPath: {{ .Values.secretFile.mountPath }}
+        {{- if .Values.secretFile.subPath }}
+        subPath: {{ .Values.secretFile.subPath }}
+        {{- end }}
+      - name: configmap-file
+        mountPath: {{ .Values.configmapFile.mountPath }}
+      {{- range .Values.configmapFiles }}
+      - name: configmap-files
+        mountPath: {{ .mountPath }}/{{ .filename }}
+        subPath: {{ .filename }}
+      {{- end }}
+      {{- range .Values.secretFiles }}
+      - name: secret-files
+        mountPath: {{ .mountPath }}/{{ .filename }}
+        subPath: {{ .filename }}
+      {{- end }}
+      {{- range $ext := .Values.externalSecretFiles }}
+      {{- range $file := $ext.files }}
+      - name: ext-s-{{ $ext.secretName }}
+        mountPath: {{ $file.mountPath }}/{{ $file.filename }}
+        subPath: {{ $file.filename }}
+      {{- end }}
+      {{- end }}
+      {{- range .Values.externalVolumes }}
+      - name: {{ .name }}
+        mountPath: {{ .mountPath }}
+        readOnly: {{ .readOnly }}
+      {{- end }}
+      {{- range .Values.hostVolumes }}
+      - name: {{ .name }}
+        mountPath: {{ .mountPath }}
+      {{- end }}
+    resources:
+      {{- toYaml .Values.resources | nindent 6 }}
+volumes:
+  {{- range .Values.sharedEmptyDirs }}
+  - name: {{ .name }}
+    emptyDir: {}
+  {{- end }}
+  - name: secret-file
+    secret:
+      secretName: "{{ .Release.Name }}-file"
+  - name: configmap-file
+    configMap:
+      name: "{{ .Release.Name }}-file"
+  - name: configmap-files
+    configMap:
+      name: "{{ .Release.Name }}-files"
+      {{- if ne (len .Values.configmapFiles) 0 }}
+      items:
+      {{- range .Values.configmapFiles }}
+        - key: {{ .filename }}
+          path: {{ .filename }}
+      {{- end }}
+      {{- end }}
+  - name: secret-files
+    secret:
+      secretName: "{{ .Release.Name }}-files"
+      {{- if ne (len .Values.secretFiles) 0 }}
+      items:
+      {{- range .Values.secretFiles }}
+        - key: {{ .filename }}
+          path: {{ .filename }}
+      {{- end }}
+      {{- end }}
+  {{- range .Values.externalSecretFiles }}
+  - name: ext-s-{{ .secretName }}
+    secret:
+      secretName: {{ .secretName }}
+      items:
+      {{- range .files }}
+        - key: {{ .filename }}
+          path: {{ .filename }}
+      {{- end }}
+  {{- end }}
+  {{- range .Values.externalVolumes }}
+  - name: "{{ .name }}"
+    persistentVolumeClaim:
+      claimName: {{ .name }}
+  {{- end }}
+  {{- range .Values.hostVolumes }}
+  - name: {{ .name }}
+    hostPath:
+      path: {{ .hostPath }}
+  {{- end }}
+{{- with .Values.nodeSelector }}
+nodeSelector:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .Values.affinity }}
+affinity:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- with .Values.tolerations }}
+tolerations:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}

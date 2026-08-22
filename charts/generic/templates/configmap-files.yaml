@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ .Release.Name }}-files"
+  labels:
+    {{- include "generic.labels" . | nindent 4 }}
+data:
+  {{- range $.Values.configmapFiles }}
+  {{ .filename }}: |
+    {{- .content | nindent 4 }}
+  {{- end }}

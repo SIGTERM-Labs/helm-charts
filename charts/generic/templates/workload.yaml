@@ -1,0 +1,431 @@
+{{- if or (eq .Values.mode "deployment") (eq .Values.mode "stateful") -}}
+{{- $fullName := include "generic.fullname" . -}}
+{{- $shortName := include "generic.shortname" . -}}
+{{- $isDeployment := eq .Values.mode "deployment" }}
+apiVersion: apps/v1
+kind: {{ if $isDeployment }}Deployment{{ else }}StatefulSet{{ end }}
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "generic.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  {{- if $isDeployment }}
+  strategy:
+    {{- if eq .Values.deployment.strategy.type "RollingUpdate" }}
+    rollingUpdate:
+      maxSurge: {{ default "25%" .Values.deployment.strategy.maxSurge }}
+      maxUnavailable: {{ default "25%" .Values.deployment.strategy.maxUnavailable }}
+    {{- end }}
+    type: {{ .Values.deployment.strategy.type }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "generic.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+      {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.recreatePodsOnUpgrade }}
+        helm/release: "{{ .Release.Revision }}"
+      {{- end }}
+      labels:
+        {{- include "generic.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "generic.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.shareProcessNamespace }}
+      shareProcessNamespace: true
+      {{- end }}
+      {{- with .Values.initContainers }}
+      initContainers:
+      {{- range $.Values.initContainers }}
+        - name: {{ .name }}
+          image: {{ .image }}
+          imagePullPolicy: {{ default "IfNotPresent" .imagePullPolicy }}
+          {{- if .command }}
+          command:
+            {{- range .command }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .args }}
+          args:
+            {{- range .args }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          {{- with $.Values.deployment.environment }}
+          env:
+            {{- range $key, $value := . }}
+            - name: "{{ $key }}"
+              value: "{{ $value }}"
+            {{- end }}
+          {{- end }}
+          envFrom:
+            - secretRef:
+                name: "{{ $.Release.Name }}-env"
+                optional: false
+            {{- range $.Values.externalSecretEnvironment }}
+            - secretRef:
+                name: "{{ .name }}"
+            {{- end }}
+            - configMapRef:
+                name: "{{ $.Release.Name }}-env"
+            {{- range $.Values.externalConfigmapEnvironment }}
+            - configMapRef:
+                name: "{{ .name }}"
+            {{- end }}
+          volumeMounts:
+            {{- range $.Values.sharedEmptyDirs }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+            - name: secret-file
+              mountPath: {{ $.Values.secretFile.mountPath }}
+              {{- if $.Values.secretFile.subPath }}
+              subPath: {{ $.Values.secretFile.subPath }}
+              {{- end }}
+            - name: configmap-file
+              mountPath: {{ $.Values.configmapFile.mountPath }}
+            {{- range $.Values.volumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+            {{- end }}
+            {{- range $.Values.externalVolumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+            {{- end }}
+            {{- range $.Values.hostVolumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+            {{- range $.Values.configmapFiles }}
+            - name: configmap-files
+              mountPath: {{ .mountPath }}/{{ .filename }}
+              subPath: {{ .filename }}
+            {{- end }}
+            {{- range $.Values.secretFiles }}
+            - name: secret-files
+              mountPath: {{ .mountPath }}/{{ .filename }}
+              subPath: {{ .filename }}
+            {{- end }}
+            {{- range $ext := $.Values.externalSecretFiles }}
+            {{- range $file := $ext.files }}
+            - name: ext-s-{{ $ext.secretName }}
+              mountPath: {{ $file.mountPath }}/{{ $file.filename }}
+              subPath: {{ $file.filename }}
+            {{- end }}
+            {{- end }}
+      {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.deployment.command }}
+          command:
+            {{- toYaml .Values.deployment.command | nindent 12 }}
+          {{- end }}
+          {{- if .Values.deployment.args }}
+          args:
+            {{- toYaml .Values.deployment.args | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: {{ .Values.deployment.containerPortName }}
+              containerPort: {{ .Values.deployment.containerPort }}
+              protocol: TCP
+          {{- with .Values.deployment.additionalPorts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.deployment.environment }}
+          env:
+            {{- range $key, $value := . }}
+            - name: "{{ $key }}"
+              value: "{{ $value }}"
+            {{- end }}
+          {{- end }}
+          envFrom:
+            {{- if .Values.deployment.secretEnvironment }}
+            - secretRef:
+                name: "{{ .Release.Name }}-main-env"
+                optional: false
+            {{- end }}
+            - secretRef:
+                name: "{{ .Release.Name }}-env"
+                optional: false
+            {{- range $.Values.externalSecretEnvironment }}
+            - secretRef:
+                name: "{{ .name }}"
+            {{- end }}
+            - configMapRef:
+                name: "{{ .Release.Name }}-env"
+            {{- range $.Values.externalConfigmapEnvironment }}
+            - configMapRef:
+                name: "{{ .name }}"
+            {{- end }}
+          volumeMounts:
+            {{- range .Values.sharedEmptyDirs }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+            - name: secret-file
+              mountPath: {{ .Values.secretFile.mountPath }}
+              {{- if $.Values.secretFile.subPath }}
+              subPath: {{ $.Values.secretFile.subPath }}
+              {{- end }}
+            - name: configmap-file
+              mountPath: {{ .Values.configmapFile.mountPath }}
+            {{- range .Values.volumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+            {{- end }}
+            {{- range .Values.externalVolumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+            {{- end }}
+            {{- range .Values.hostVolumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+            {{- range $.Values.configmapFiles }}
+            - name: configmap-files
+              mountPath: {{ .mountPath }}/{{ .filename }}
+              subPath: {{ .filename }}
+            {{- end }}
+            {{- range $.Values.secretFiles }}
+            - name: secret-files
+              mountPath: {{ .mountPath }}/{{ .filename }}
+              subPath: {{ .filename }}
+            {{- end }}
+            {{- range $ext := $.Values.externalSecretFiles }}
+            {{- range $file := $ext.files }}
+            - name: ext-s-{{ $ext.secretName }}
+              mountPath: {{ $file.mountPath }}/{{ $file.filename }}
+              subPath: {{ $file.filename }}
+            {{- end }}
+            {{- end }}
+          {{- with .Values.deployment.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.deployment.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.deployment.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          lifecycle:
+            {{- toYaml .Values.deployment.lifecycle | nindent 12 }}
+        {{- range .Values.sidecars -}}
+        {{- $sidecarName := .name }}
+        - name: {{ $sidecarName }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          image: "{{ .image.repository }}:{{ .image.tag }}"
+          imagePullPolicy: {{ .image.pullPolicy }}
+          {{- if .command }}
+          command:
+            {{- range .command }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .args }}
+          args:
+            {{- range .args }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- with .ports }}
+          ports:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .environment }}
+          env:
+            {{- range $key, $value := . }}
+            - name: "{{ $key }}"
+              value: "{{ $value }}"
+            {{- end }}
+          {{- end }}
+          envFrom:
+            {{- if .secretEnvironment }}
+            - secretRef:
+                name: "{{ $.Release.Name }}-{{ $sidecarName }}-env"
+                optional: false
+            {{- end }}
+            - secretRef:
+                name: "{{ $.Release.Name }}-env"
+                optional: false
+            {{- range $.Values.externalSecretEnvironment }}
+            - secretRef:
+                name: "{{ .name }}"
+            {{- end }}
+            - configMapRef:
+                name: "{{ $.Release.Name }}-env"
+            {{- range $.Values.externalConfigmapEnvironment }}
+            - configMapRef:
+                name: "{{ .name }}"
+            {{- end }}
+          volumeMounts:
+            {{- range $.Values.sharedEmptyDirs }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+            - name: secret-file
+              mountPath: {{ $.Values.secretFile.mountPath }}
+              {{- if $.Values.secretFile.subPath }}
+              subPath: {{ $.Values.secretFile.subPath }}
+              {{- end }}
+            - name: configmap-file
+              mountPath: {{ $.Values.configmapFile.mountPath }}
+            {{- range $.Values.volumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+            {{- end }}
+            {{- range $.Values.externalVolumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly }}
+            {{- end }}
+            {{- range $.Values.hostVolumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+            {{- range $.Values.configmapFiles }}
+            - name: configmap-files
+              mountPath: {{ .mountPath }}/{{ .filename }}
+              subPath: {{ .filename }}
+            {{- end }}
+            {{- range $.Values.secretFiles }}
+            - name: secret-files
+              mountPath: {{ .mountPath }}/{{ .filename }}
+              subPath: {{ .filename }}
+            {{- end }}
+            {{- range $ext := $.Values.externalSecretFiles }}
+            {{- range $file := $ext.files }}
+            - name: ext-s-{{ $ext.secretName }}
+              mountPath: {{ $file.mountPath }}/{{ $file.filename }}
+              subPath: {{ $file.filename }}
+            {{- end }}
+            {{- end }}
+        {{- end }}
+      volumes:
+        {{- range .Values.sharedEmptyDirs }}
+        - name: {{ .name }}
+          emptyDir: {}
+        {{- end }}
+        - name: secret-file
+          secret:
+            secretName: "{{ .Release.Name }}-file"
+        - name: configmap-file
+          configMap:
+            name: "{{ .Release.Name }}-file"
+        - name: configmap-files
+          configMap:
+            name: "{{ .Release.Name }}-files"
+            {{- if ne (len $.Values.configmapFiles) 0 }}
+            items:
+            {{- range $.Values.configmapFiles }}
+              - key: {{ .filename }}
+                path: {{ .filename }}
+            {{- end }}
+            {{- end }}
+        - name: secret-files
+          secret:
+            secretName: "{{ .Release.Name }}-files"
+            {{- if ne (len $.Values.secretFiles) 0 }}
+            items:
+            {{- range $.Values.secretFiles }}
+              - key: {{ .filename }}
+                path: {{ .filename }}
+            {{- end }}
+            {{- end }}
+        {{- range $.Values.externalSecretFiles }}
+        - name: ext-s-{{ .secretName }}
+          secret:
+            secretName: {{ .secretName }}
+            items:
+            {{- range .files }}
+              - key: {{ .filename }}
+                path: {{ .filename }}
+            {{- end }}
+        {{- end }}
+        {{- if $isDeployment }}
+        {{- range .Values.volumes }}
+        - name: {{ .name }}
+          persistentVolumeClaim:
+            claimName: {{ $fullName }}-{{ .name }}
+        {{- end }}
+        {{- end }}
+        {{- range .Values.externalVolumes }}
+        - name: "{{ .name }}"
+          persistentVolumeClaim:
+            claimName: {{ .name }}
+        {{- end }}
+        {{- range .Values.hostVolumes }}
+        - name: {{ .name }}
+          hostPath:
+            path: {{ .hostPath }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if not $isDeployment }}
+  volumeClaimTemplates:
+    {{- range .Values.volumes }}
+    - metadata:
+        name: {{ .name }}
+      spec:
+        accessModes:
+          {{- if .accessModes }}
+          {{- toYaml .accessModes | nindent 10 }}
+          {{- else }}
+          - ReadWriteOnce
+          {{- end }}
+        {{- if .storageClassName }}
+        storageClassName: {{ .storageClassName }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .size }}
+        {{- if .volumeMode }}
+        volumeMode: {{ .volumeMode }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

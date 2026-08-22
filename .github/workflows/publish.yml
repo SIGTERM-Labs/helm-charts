@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -25,3 +25,32 @@ jobs:
         uses: helm/chart-releaser-action@v1
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+  publish-oci:
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Package and push charts
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          for chart in charts/*/; do
+            name=$(grep '^name:' "$chart/Chart.yaml" | awk '{print $2}')
+            version=$(grep '^version:' "$chart/Chart.yaml" | awk '{print $2}')
+            if helm show chart "oci://ghcr.io/${owner}/helm-charts/${name}" --version "$version" > /dev/null 2>&1; then
+              echo "::notice::${name}@${version} already exists in OCI registry, skipping"
+              continue
+            fi
+            helm package "$chart"
+            helm push "${name}-${version}.tgz" "oci://ghcr.io/${owner}/helm-charts"
+          done
