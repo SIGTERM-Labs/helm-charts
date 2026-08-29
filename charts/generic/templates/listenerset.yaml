@@ -30,7 +30,7 @@ spec:
       tls:
         certificateRefs:
           - kind: Secret
-            name: "{{ $.Values.publish.tlsSecretName | default (printf "%s-tls" $fullName) }}"
+            name: "{{ $.Values.publish.tlsSecretName | default (printf "%s-tls" $.Release.Name) }}"
       {{- else }}
       protocol: HTTP
       port: 80
