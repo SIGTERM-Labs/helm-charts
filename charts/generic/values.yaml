@@ -160,7 +160,7 @@ additionalServices: []
 
 publish:
   enabled: false
-  type: ingress # ingress | gateway
+  type: gateway # ingress | gateway
 
   hosts:
     - host: chart-example.local
