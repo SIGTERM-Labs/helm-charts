@@ -1,0 +1,42 @@
+{{- if and .Values.publish.enabled (eq .Values.publish.type "gateway") .Values.publish.gateway.listenerSet.enabled -}}
+{{- if not .Values.publish.gateway.name }}
+{{- fail "publish.gateway.name is required when publish.type is \"gateway\"" }}
+{{- end }}
+{{- $fullName := include "generic.fullname" . -}}
+{{- $gw := .Values.publish.gateway -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "generic.labels" . | nindent 4 }}
+  {{- with $gw.listenerSet.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRef:
+    name: {{ $gw.name }}
+    namespace: {{ $gw.namespace }}
+    kind: Gateway
+    group: gateway.networking.k8s.io
+  listeners:
+    {{- range .Values.publish.hosts }}
+    - name: {{ .host | replace "*" "wildcard" | replace "." "-" | lower | trunc 63 | trimSuffix "-" }}
+      hostname: {{ .host }}
+      {{- if $.Values.publish.tlsEnabled }}
+      protocol: HTTPS
+      port: 443
+      tls:
+        certificateRefs:
+          - kind: Secret
+            name: "{{ $.Values.publish.tlsSecretName | default (printf "%s-tls" $fullName) }}"
+      {{- else }}
+      protocol: HTTP
+      port: 80
+      {{- end }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+{{- end }}

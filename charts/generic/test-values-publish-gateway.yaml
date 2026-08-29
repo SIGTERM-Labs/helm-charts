@@ -1,0 +1,31 @@
+# Test values to verify the primary "publish" block renders an HTTPRoute + ListenerSet
+# when publish.type is "gateway" (as opposed to the default "ingress").
+mode: deployment
+replicaCount: 1
+image:
+  repository: nginx
+  tag: latest
+deployment:
+  containerPort: 80
+  containerPortName: http
+service:
+  enabled: true
+  port: 80
+
+publish:
+  enabled: true
+  type: gateway
+
+  hosts:
+    - host: gateway-primary.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+  tlsEnabled: true
+
+  gateway:
+    name: public
+    namespace: envoy-gateway-system
+    listenerSet:
+      enabled: true

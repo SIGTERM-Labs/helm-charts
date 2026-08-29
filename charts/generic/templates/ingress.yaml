@@ -1,9 +1,15 @@
-{{- if .Values.ingress.enabled -}}
+{{- if .Values.publish.enabled -}}
+{{- if not (has .Values.publish.type (list "ingress" "gateway")) }}
+{{- fail (printf "publish.type must be \"ingress\" or \"gateway\" (got %q)" .Values.publish.type) }}
+{{- end }}
+{{- end }}
+{{- if and .Values.publish.enabled (eq .Values.publish.type "ingress") -}}
 {{- $fullName := include "generic.fullname" . -}}
 {{- $svcPort := .Values.service.port -}}
-{{- if and .Values.ingress.className (not (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion)) }}
-  {{- if not (hasKey .Values.ingress.annotations "kubernetes.io/ingress.class") }}
-  {{- $_ := set .Values.ingress.annotations "kubernetes.io/ingress.class" .Values.ingress.className}}
+{{- $annotations := .Values.publish.ingress.annotations -}}
+{{- if and .Values.publish.ingress.className (not (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion)) }}
+  {{- if not (hasKey $annotations "kubernetes.io/ingress.class") }}
+  {{- $_ := set $annotations "kubernetes.io/ingress.class" .Values.publish.ingress.className }}
   {{- end }}
 {{- end }}
 {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion -}}
@@ -18,31 +24,32 @@ metadata:
   name: {{ $fullName }}
   labels:
     {{- include "generic.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
+  {{- with $annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- if and .Values.ingress.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
-  ingressClassName: {{ .Values.ingress.className }}
+  {{- if and .Values.publish.ingress.className (semverCompare ">=1.18-0" .Capabilities.KubeVersion.GitVersion) }}
+  ingressClassName: {{ .Values.publish.ingress.className }}
   {{- end }}
-  {{- if .Values.ingress.tlsEnabled }}
+  {{- if .Values.publish.tlsEnabled }}
   tls:
     - hosts:
-      {{- range .Values.ingress.hosts }}
+      {{- range .Values.publish.hosts }}
         - {{ .host | quote }}
       {{- end }}
-      {{- if .Values.ingress.tlsSecretEnabled }}
-      secretName: "{{ .Values.ingress.tlsSecretName | default (printf "%s-tls" .Release.Name) }}"
+      {{- if .Values.publish.ingress.tlsSecretEnabled }}
+      secretName: "{{ .Values.publish.tlsSecretName | default (printf "%s-tls" .Release.Name) }}"
       {{- end }}
   {{- end }}
-  {{- if eq $.Values.ingress.ruleType "rules" }}
+  {{- if eq $.Values.publish.ingress.ruleType "rules" }}
   rules:
-    {{- range .Values.ingress.hosts }}
+    {{- range .Values.publish.hosts }}
+    {{- $paths := default (list (dict "path" "/" "pathType" "Prefix")) .paths }}
     - host: {{ .host | quote }}
       http:
         paths:
-          {{- range .paths }}
+          {{- range $paths }}
           - path: {{ .path }}
             {{- if and .pathType (semverCompare ">=1.18-0" $.Capabilities.KubeVersion.GitVersion) }}
             pathType: {{ .pathType }}
@@ -59,7 +66,7 @@ spec:
               {{- end }}
           {{- end }}
     {{- end }}
-  {{- else if eq $.Values.ingress.ruleType "defaultBackend" }}
+  {{- else if eq $.Values.publish.ingress.ruleType "defaultBackend" }}
   defaultBackend:
     service:
       name: {{ $fullName }}

@@ -559,3 +559,62 @@ jobs:
             cat /tmp/additional-ingress-output.yaml
             exit 1
           fi
+
+      - name: Test publish - verify publish.type=gateway renders HTTPRoute + ListenerSet
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-publish-gateway.yaml > /tmp/publish-gateway-output.yaml
+          if grep -q "kind: HTTPRoute" /tmp/publish-gateway-output.yaml && grep -q "kind: ListenerSet" /tmp/publish-gateway-output.yaml; then
+            echo "✓ publish.type=gateway rendered HTTPRoute and ListenerSet"
+          else
+            echo "✗ publish.type=gateway did not render HTTPRoute/ListenerSet as expected"
+            cat /tmp/publish-gateway-output.yaml
+            exit 1
+          fi
+          if grep -q "kind: Ingress" /tmp/publish-gateway-output.yaml; then
+            echo "✗ Unexpected Ingress found when publish.type=gateway"
+            exit 1
+          else
+            echo "✓ No Ingress created when publish.type=gateway (correct)"
+          fi
+          # HTTPRoute must parent to the ListenerSet, not the Gateway directly
+          if grep -q "kind: ListenerSet" /tmp/publish-gateway-output.yaml && grep -A2 "parentRefs:" /tmp/publish-gateway-output.yaml | grep -q "kind: ListenerSet"; then
+            echo "✓ HTTPRoute parentRefs targets the generated ListenerSet"
+          else
+            echo "✗ HTTPRoute parentRefs did not target the ListenerSet as expected"
+            cat /tmp/publish-gateway-output.yaml
+            exit 1
+          fi
+
+      - name: Test publish - invalid type and missing gateway.name should fail
+        run: |
+          set +e
+          helm template test ./charts/generic --set publish.enabled=true --set publish.type=bogus 2>&1 | tee /tmp/publish-invalid-type.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for invalid publish.type, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q 'publish.type must be "ingress" or "gateway"' /tmp/publish-invalid-type.txt; then
+            echo "✓ Validation correctly failed for invalid publish.type"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/publish-invalid-type.txt
+            exit 1
+          fi
+
+          set +e
+          helm template test ./charts/generic --set publish.enabled=true --set publish.type=gateway --set publish.gateway.name="" 2>&1 | tee /tmp/publish-missing-gw-name.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for missing publish.gateway.name, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "publish.gateway.name is required" /tmp/publish-missing-gw-name.txt; then
+            echo "✓ Validation correctly failed for missing publish.gateway.name"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/publish-missing-gw-name.txt
+            exit 1
+          fi

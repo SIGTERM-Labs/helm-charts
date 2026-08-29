@@ -158,30 +158,55 @@ additionalServices: []
 #       protocol: TCP
 #       name: metrics
 
-ingress:
+publish:
   enabled: false
-  className: ""
-  annotations: {}
-    # kubernetes.io/ingress.class: nginx
-    # kubernetes.io/tls-acme: "true"
+  type: ingress # ingress | gateway
+
   hosts:
     - host: chart-example.local
+      # paths defaults to a single "/" Prefix path when omitted
       paths:
         - path: /
           pathType: Prefix
           # port: 8080  # Optional: specify a custom port for this path, otherwise uses service.port
+
   tlsEnabled: true
   # Uncomment the following to use a pre-generated TLS Secret
   # tlsSecretName: ""
 
-  # Set to false if TLS is enabled, but you're using an ingress class that doesn't support TLS cert secrets
-  tlsSecretEnabled: true
-  # Switch between different Ingress rule styles. Can be one of "rules", or "defaultBackend"
-  ruleType: "rules"
+  ingress:
+    className: ""
+    annotations: {}
+      # kubernetes.io/ingress.class: nginx
+      # kubernetes.io/tls-acme: "true"
+    # Switch between different Ingress rule styles. Can be one of "rules", or "defaultBackend"
+    ruleType: "rules"
+    # Set to false if TLS is enabled, but you're using an ingress class that doesn't support TLS cert secrets
+    tlsSecretEnabled: true
+
+  gateway:
+    name: public
+    namespace: envoy-gateway-system
+    # Applied to the generated HTTPRoute only
+    annotations: {}
+
+    # Optional if using ListenerSet
+    listenerSet:
+      enabled: true
+      # Applied to the generated ListenerSet only. Useful for cert-manager annotations
+      # (e.g. cert-manager.io/cluster-issuer), since the ListenerSet is what holds the
+      # TLS certificateRefs, not the HTTPRoute.
+      annotations: {}
+
+    # Because HTTPRoute rules are so extensible, it is complicated to generate a catch-all set of generic rules
+    # from "hosts" above. This chart provides a minimal PathPrefix matcher and backendRef rule per host/path by
+    # default, but rules can be defined here instead and are provided to the HTTPRoute as-is.
+    # See the HTTPRoute documentation for configuration details: https://gateway-api.sigs.k8s.io/api-types/httproute/
+    # rules: {}
 
 # Sometimes, additional Ingresses are needed alongside the primary one
 # (e.g. a second hostname/class, or routing to a different Service).
-# Each entry mirrors the primary "ingress" block above.
+# Each entry mirrors the primary "publish"/"publish.ingress" settings above.
 additionalIngresses: []
 #  - name: ingress-name # If omitted, it will be named like the primary ingress, with an incrementing number
 #    className: ""
@@ -197,11 +222,12 @@ additionalIngresses: []
 #    # hosts is optional when ruleType is "defaultBackend"
 #    hosts:
 #      - host: chart-example.local
+#        # paths defaults to a single "/" Prefix path when omitted
 #        paths:
 #          - path: /
 #            pathType: Prefix
 #            # port: 8080  # Optional: custom backend port for this path, otherwise uses servicePort
-#    # Defaults to true when omitted (matches the primary ingress). Set to false to disable TLS.
+#    # Defaults to true when omitted (matches the primary publish block). Set to false to disable TLS.
 #    tlsEnabled: true
 #    # Uncomment to use a pre-generated TLS Secret (defaults to "<ingress name>-tls")
 #    # tlsSecretName: ""
@@ -209,27 +235,6 @@ additionalIngresses: []
 #    tlsSecretEnabled: true
 #    # Switch between different Ingress rule styles. Can be one of "rules", or "defaultBackend"
 #    ruleType: "rules"
-
-gatewayAPI:
-  # This supports the v1 HTTPRoute API schema. It assumes a properly configured GatewayClass and Gateway is already installed and programmed.
-  httpRoute:
-    enabled: false
-    # Defines which Gateways this Route wants to attach to. The Gateway must be configured to accept HTTPRoutes from this namespace.
-    parentRefs:
-      - group: gateway.networking.k8s.io
-        kind: Gateway
-        # Uncomment the following lines and change the values to point to your gateway
-        # name: default
-        # namespace: gateway-system
-
-    # Defines a list of hostnames to use for matching the Host header of requests.
-    hostnames:
-      - chart-example.local
-
-    # Because HTTPRoute rules are so extensible, it is complicated to generate a catch-all set of generic rules.
-    # This chart provides a minimal matcher and backendRef rule by default, but rules can be defined here instead and are provided to the HTTPRoute as-is.
-    # See the HTTPRoute documentation for configuration details: https://gateway-api.sigs.k8s.io/api-types/httproute/
-    # rules: {}
 
 # Contour-specific routing. Assumes the Contour ingress controller and its
 # projectcontour.io/v1 HTTPProxy CRD are already installed in the cluster.
