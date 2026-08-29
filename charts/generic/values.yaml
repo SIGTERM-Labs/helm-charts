@@ -204,38 +204,6 @@ publish:
     # See the HTTPRoute documentation for configuration details: https://gateway-api.sigs.k8s.io/api-types/httproute/
     # rules: {}
 
-# Sometimes, additional Ingresses are needed alongside the primary one
-# (e.g. a second hostname/class, or routing to a different Service).
-# Each entry mirrors the primary "publish"/"publish.ingress" settings above.
-additionalIngresses: []
-#  - name: ingress-name # If omitted, it will be named like the primary ingress, with an incrementing number
-#    className: ""
-#    # Route to a different Service (defaults to the chart's primary Service)
-#    serviceName: ""
-#    # Default backend port for paths that don't specify their own (defaults to service.port)
-#    servicePort: 80
-#    additionalLabels: {}
-#      # application: my-application
-#    annotations: {}
-#      # kubernetes.io/ingress.class: nginx
-#      # kubernetes.io/tls-acme: "true"
-#    # hosts is optional when ruleType is "defaultBackend"
-#    hosts:
-#      - host: chart-example.local
-#        # paths defaults to a single "/" Prefix path when omitted
-#        paths:
-#          - path: /
-#            pathType: Prefix
-#            # port: 8080  # Optional: custom backend port for this path, otherwise uses servicePort
-#    # Defaults to true when omitted (matches the primary publish block). Set to false to disable TLS.
-#    tlsEnabled: true
-#    # Uncomment to use a pre-generated TLS Secret (defaults to "<ingress name>-tls")
-#    # tlsSecretName: ""
-#    # Defaults to true when omitted. Set to false if TLS is enabled, but you're using an ingress class that doesn't support TLS cert secrets
-#    tlsSecretEnabled: true
-#    # Switch between different Ingress rule styles. Can be one of "rules", or "defaultBackend"
-#    ruleType: "rules"
-
 # Contour-specific routing. Assumes the Contour ingress controller and its
 # projectcontour.io/v1 HTTPProxy CRD are already installed in the cluster.
 contour:
