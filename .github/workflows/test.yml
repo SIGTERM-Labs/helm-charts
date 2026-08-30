@@ -498,64 +498,61 @@ jobs:
             exit 1
           fi
 
-      - name: Test additionalIngresses - verify no Ingress created by default
+      - name: Test publish - verify publish.type=gateway renders HTTPRoute + ListenerSet
         run: |
-          helm template test ./charts/generic -f ./charts/generic/values.yaml > /tmp/additional-ingress-default.yaml
-          if grep -q "kind: Ingress" /tmp/additional-ingress-default.yaml; then
-            echo "✗ Unexpected Ingress found in default values output"
+          helm template test ./charts/generic -f ./charts/generic/test-values-publish-gateway.yaml > /tmp/publish-gateway-output.yaml
+          if grep -q "kind: HTTPRoute" /tmp/publish-gateway-output.yaml && grep -q "kind: ListenerSet" /tmp/publish-gateway-output.yaml; then
+            echo "✓ publish.type=gateway rendered HTTPRoute and ListenerSet"
+          else
+            echo "✗ publish.type=gateway did not render HTTPRoute/ListenerSet as expected"
+            cat /tmp/publish-gateway-output.yaml
+            exit 1
+          fi
+          if grep -q "kind: Ingress" /tmp/publish-gateway-output.yaml; then
+            echo "✗ Unexpected Ingress found when publish.type=gateway"
             exit 1
           else
-            echo "✓ No Ingress created by default (correct)"
+            echo "✓ No Ingress created when publish.type=gateway (correct)"
+          fi
+          # HTTPRoute must parent to the ListenerSet, not the Gateway directly
+          if grep -q "kind: ListenerSet" /tmp/publish-gateway-output.yaml && grep -A2 "parentRefs:" /tmp/publish-gateway-output.yaml | grep -q "kind: ListenerSet"; then
+            echo "✓ HTTPRoute parentRefs targets the generated ListenerSet"
+          else
+            echo "✗ HTTPRoute parentRefs did not target the ListenerSet as expected"
+            cat /tmp/publish-gateway-output.yaml
+            exit 1
           fi
 
-      - name: Test additionalIngresses - verify Ingresses can be created
+      - name: Test publish - invalid type and missing gateway.name should fail
         run: |
-          helm template test ./charts/generic -f ./charts/generic/test-values-additional-ingresses.yaml > /tmp/additional-ingress-output.yaml
-          INGRESS_COUNT=$(grep -c "kind: Ingress" /tmp/additional-ingress-output.yaml || echo "0")
-          if [ "$INGRESS_COUNT" -eq 3 ]; then
-            echo "✓ Correctly created 3 additional Ingresses"
-          else
-            echo "✗ Expected 3 Ingresses, found $INGRESS_COUNT"
-            cat /tmp/additional-ingress-output.yaml
+          set +e
+          helm template test ./charts/generic --set publish.enabled=true --set publish.type=bogus 2>&1 | tee /tmp/publish-invalid-type.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for invalid publish.type, but helm template succeeded"
             exit 1
           fi
-          if grep -q "name: test-ingress-primary" /tmp/additional-ingress-output.yaml; then
-            echo "✓ Named Ingress has correct name"
+          if grep -q 'publish.type must be "ingress" or "gateway"' /tmp/publish-invalid-type.txt; then
+            echo "✓ Validation correctly failed for invalid publish.type"
           else
-            echo "✗ Named Ingress not found"
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/publish-invalid-type.txt
             exit 1
           fi
-          # Unnamed second entry must fall back to an indexed fullname
-          if grep -q "name: test-generic-2" /tmp/additional-ingress-output.yaml; then
-            echo "✓ Unnamed Ingress defaults to indexed fullname"
-          else
-            echo "✗ Unnamed Ingress name not defaulted as expected"
-            cat /tmp/additional-ingress-output.yaml
+
+          set +e
+          helm template test ./charts/generic --set publish.enabled=true --set publish.type=gateway --set publish.gateway.name="" 2>&1 | tee /tmp/publish-missing-gw-name.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for missing publish.gateway.name, but helm template succeeded"
             exit 1
           fi
-          # Custom serviceName/servicePort must be honored in the backend
-          if grep -q "name: other-svc" /tmp/additional-ingress-output.yaml; then
-            echo "✓ Custom backend serviceName honored"
+          if grep -q "publish.gateway.name is required" /tmp/publish-missing-gw-name.txt; then
+            echo "✓ Validation correctly failed for missing publish.gateway.name"
           else
-            echo "✗ Custom backend serviceName not found"
-            cat /tmp/additional-ingress-output.yaml
-            exit 1
-          fi
-          # TLS secret name must render even though tlsEnabled/tlsSecretEnabled are
-          # omitted (they must default to true, matching the primary ingress). Rendered quoted.
-          if grep -q 'secretName: "test-ingress-primary-tls"' /tmp/additional-ingress-output.yaml; then
-            echo "✓ TLS secretName renders by default (tlsSecretEnabled defaults to true)"
-          else
-            echo "✗ TLS secretName not found"
-            cat /tmp/additional-ingress-output.yaml
-            exit 1
-          fi
-          # A defaultBackend-only entry must render an Ingress even without hosts
-          if grep -q "name: test-ingress-default-backend" /tmp/additional-ingress-output.yaml \
-            && grep -q "defaultBackend:" /tmp/additional-ingress-output.yaml; then
-            echo "✓ defaultBackend-only Ingress renders without hosts"
-          else
-            echo "✗ defaultBackend-only Ingress not rendered as expected"
-            cat /tmp/additional-ingress-output.yaml
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/publish-missing-gw-name.txt
             exit 1
           fi

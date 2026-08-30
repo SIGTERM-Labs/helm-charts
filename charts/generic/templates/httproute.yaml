@@ -1,35 +1,52 @@
-{{- if .Values.gatewayAPI.httpRoute.enabled -}}
+{{- if and .Values.publish.enabled (eq .Values.publish.type "gateway") -}}
+{{- if not .Values.publish.gateway.name }}
+{{- fail "publish.gateway.name is required when publish.type is \"gateway\"" }}
+{{- end }}
 {{- $fullName := include "generic.fullname" . -}}
 {{- $svcPort := .Values.service.port -}}
+{{- $gw := .Values.publish.gateway -}}
+{{- $listenerSetEnabled := and $gw.listenerSet $gw.listenerSet.enabled -}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: {{ $fullName }}
   labels:
     {{- include "generic.labels" . | nindent 4 }}
-  {{- with .Values.gatewayAPI.httpRoute.annotations }}
+  {{- with $gw.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
   parentRefs:
-  {{- with .Values.gatewayAPI.httpRoute.parentRefs }}
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- if $listenerSetEnabled }}
+    - name: {{ $fullName }}
+      kind: ListenerSet
+      group: gateway.networking.k8s.io
+    {{- else }}
+    - name: {{ $gw.name }}
+      namespace: {{ $gw.namespace }}
+      kind: Gateway
+      group: gateway.networking.k8s.io
+    {{- end }}
   hostnames:
-  {{- with .Values.gatewayAPI.httpRoute.hostnames }}
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- range .Values.publish.hosts }}
+    - {{ .host | quote }}
+    {{- end }}
   rules:
-  {{- if .Values.gatewayAPI.httpRoute.rules }}
-    {{- toYaml .Values.gatewayAPI.httpRoute.rules | nindent 4 }}
-  {{- else }}
+    {{- if $gw.rules }}
+    {{- toYaml $gw.rules | nindent 4 }}
+    {{- else }}
+    {{- range .Values.publish.hosts }}
+    {{- $paths := default (list (dict "path" "/" "pathType" "Prefix")) .paths }}
+    {{- range $paths }}
     - matches:
         - path:
-            type: PathPrefix
-            value: /
+            type: {{ if eq .pathType "Exact" }}Exact{{ else }}PathPrefix{{ end }}
+            value: {{ .path }}
       backendRefs:
         - name: {{ $fullName }}
-          port: {{ $svcPort }}
-  {{- end }}
+          port: {{ .port | default $svcPort }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
 {{- end }}
