@@ -66,4 +66,15 @@ entries:
     urls:
     - https://github.com/Starttoaster/helm-charts/releases/download/oauth2-proxy-0.1.0/oauth2-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-08-30T15:35:10.543758442Z"
+  prometheus-operator:
+  - apiVersion: v2
+    created: "2026-08-30T17:59:41.00111875Z"
+    description: Prometheus Operator resources (Prometheus, Alertmanager, and supporting
+      CRs)
+    digest: 20618e8a4dda4e12542221b1550086b0f6e196edc08858a4c2f5dd8e956ab5fd
+    name: prometheus-operator
+    type: application
+    urls:
+    - https://github.com/SIGTERM-Labs/helm-charts/releases/download/prometheus-operator-0.1.0/prometheus-operator-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-08-30T17:59:41.001128819Z"
