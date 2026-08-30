@@ -4,6 +4,18 @@ entries:
   - annotations:
       attribute-from: https://github.com/Chia-Network/helm-charts
     apiVersion: v2
+    created: "2026-08-30T15:35:10.543744336Z"
+    description: A generic helm chart that handles a bunch of common application deploy
+      cases
+    digest: 7f10532074d8a357c5bbdb7a74d2401987ac91f31712d5a800259f0ca7cd343b
+    name: generic
+    type: application
+    urls:
+    - https://github.com/SIGTERM-Labs/helm-charts/releases/download/generic-2.0.0/generic-2.0.0.tgz
+    version: 2.0.0
+  - annotations:
+      attribute-from: https://github.com/Chia-Network/helm-charts
+    apiVersion: v2
     created: "2026-08-22T19:14:31.088212139Z"
     description: A generic helm chart that handles a bunch of common application deploy
       cases
@@ -54,4 +66,4 @@ entries:
     urls:
     - https://github.com/Starttoaster/helm-charts/releases/download/oauth2-proxy-0.1.0/oauth2-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-08-22T19:14:31.088222028Z"
+generated: "2026-08-30T15:35:10.543758442Z"
