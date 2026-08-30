@@ -1,0 +1,24 @@
+{{- if and .Values.prometheus.enabled .Values.prometheus.service.enabled .Values.prometheus.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "prometheus-operator.prometheus.serviceName" . }}
+  labels:
+    {{- include "prometheus-operator.prometheus.labels" . | nindent 4 }}
+    {{- with .Values.prometheus.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.prometheus.serviceMonitor.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  endpoints:
+    - interval: {{ .Values.prometheus.serviceMonitor.interval }}
+      port: web
+    - interval: {{ .Values.prometheus.serviceMonitor.interval }}
+      port: reloader-web
+  selector:
+    matchLabels:
+      {{- include "prometheus-operator.prometheus.labels" . | nindent 6 }}
+{{- end }}

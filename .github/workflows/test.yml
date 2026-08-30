@@ -22,6 +22,242 @@ jobs:
             --values charts/oauth2-proxy/values.yaml \
             --debug
 
+  prometheus-operator-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint Helm chart
+        run: |
+          helm lint charts/prometheus-operator
+
+      - name: Template default values
+        run: |
+          helm template prom charts/prometheus-operator \
+            --values charts/prometheus-operator/values.yaml \
+            > /tmp/prom-default.yaml
+          for kind in Prometheus Alertmanager Service ServiceAccount ClusterRole ClusterRoleBinding; do
+            if grep -q "kind: $kind" /tmp/prom-default.yaml; then
+              echo "✓ $kind rendered"
+            else
+              echo "✗ $kind not found"
+              cat /tmp/prom-default.yaml
+              exit 1
+            fi
+          done
+          if grep -q "kind: Ingress" /tmp/prom-default.yaml || grep -q "kind: HTTPRoute" /tmp/prom-default.yaml; then
+            echo "✗ Ingress/HTTPRoute rendered by default (should be disabled)"
+            exit 1
+          else
+            echo "✓ No Ingress/HTTPRoute rendered by default"
+          fi
+          if grep -q "kind: PodDisruptionBudget" /tmp/prom-default.yaml; then
+            echo "✗ PDB rendered by default (should be disabled)"
+            exit 1
+          else
+            echo "✓ No PDB rendered by default"
+          fi
+          # Auto-wired alerting should point at the generated Alertmanager Service
+          if grep -q "name: alertmanager-main" /tmp/prom-default.yaml && grep -A20 "alerting:" /tmp/prom-default.yaml | grep -q "port: web"; then
+            echo "✓ Prometheus alerting linked to Alertmanager Service"
+          else
+            echo "✗ Prometheus alerting was not linked to Alertmanager"
+            cat /tmp/prom-default.yaml
+            exit 1
+          fi
+
+      - name: Template full values
+        run: |
+          helm template prom charts/prometheus-operator \
+            -f charts/prometheus-operator/test-values-full.yaml \
+            > /tmp/prom-full.yaml
+          for kind in Prometheus Alertmanager Ingress HTTPRoute ListenerSet PodDisruptionBudget ServiceMonitor AlertmanagerConfig ScrapeConfig PrometheusRule PodMonitor; do
+            if grep -q "kind: $kind" /tmp/prom-full.yaml; then
+              echo "✓ $kind rendered"
+            else
+              echo "✗ $kind not found"
+              cat /tmp/prom-full.yaml
+              exit 1
+            fi
+          done
+          if grep -q "name: prometheus-k8s" /tmp/prom-full.yaml && grep -q "name: alertmanager-main" /tmp/prom-full.yaml; then
+            echo "✓ Service names follow prometheus-<name> / alertmanager-<name>"
+          else
+            echo "✗ Expected Service names not found"
+            exit 1
+          fi
+          if grep -q "name: synology" /tmp/prom-full.yaml && grep -q "name: proxmox-ceph" /tmp/prom-full.yaml; then
+            echo "✓ Multiple ScrapeConfigs rendered"
+          else
+            echo "✗ Expected ScrapeConfigs not found"
+            exit 1
+          fi
+          if grep -q "name: kubelet" /tmp/prom-full.yaml && grep -q "name: kube-apiserver" /tmp/prom-full.yaml; then
+            echo "✓ Multiple ServiceMonitors rendered"
+          else
+            echo "✗ Expected ServiceMonitors not found"
+            exit 1
+          fi
+          if grep -q "kind: Ingress" /tmp/prom-full.yaml && grep -q "prometheus.example.com" /tmp/prom-full.yaml; then
+            echo "✓ Prometheus publish.type=ingress rendered Ingress"
+          else
+            echo "✗ Prometheus Ingress not found"
+            exit 1
+          fi
+          if grep -A2 "parentRefs:" /tmp/prom-full.yaml | grep -q "kind: ListenerSet"; then
+            echo "✓ Alertmanager HTTPRoute parentRefs targets ListenerSet"
+          else
+            echo "✗ Alertmanager HTTPRoute did not target ListenerSet"
+            cat /tmp/prom-full.yaml
+            exit 1
+          fi
+
+      - name: Test publish.type=gateway renders HTTPRoute + ListenerSet
+        run: |
+          helm template prom charts/prometheus-operator \
+            -f charts/prometheus-operator/test-values-publish-gateway.yaml \
+            > /tmp/prom-gw.yaml
+          if grep -q "kind: HTTPRoute" /tmp/prom-gw.yaml && grep -q "kind: ListenerSet" /tmp/prom-gw.yaml; then
+            echo "✓ publish.type=gateway rendered HTTPRoute and ListenerSet"
+          else
+            echo "✗ publish.type=gateway did not render HTTPRoute/ListenerSet"
+            cat /tmp/prom-gw.yaml
+            exit 1
+          fi
+          if grep -q "kind: Ingress" /tmp/prom-gw.yaml; then
+            echo "✗ Unexpected Ingress found when publish.type=gateway"
+            exit 1
+          else
+            echo "✓ No Ingress created when publish.type=gateway"
+          fi
+          if grep -q "kind: Alertmanager" /tmp/prom-gw.yaml; then
+            echo "✗ Alertmanager rendered when alertmanager.enabled=false"
+            exit 1
+          else
+            echo "✓ Alertmanager not rendered when disabled"
+          fi
+
+      - name: Test invalid publish.type and missing gateway.name should fail
+        run: |
+          set +e
+          helm template prom charts/prometheus-operator \
+            --set prometheus.publish.enabled=true --set prometheus.publish.type=bogus \
+            2>&1 | tee /tmp/publish-invalid-type.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for invalid publish.type, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q 'publish.type must be "ingress" or "gateway"' /tmp/publish-invalid-type.txt; then
+            echo "✓ Validation correctly failed for invalid publish.type"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/publish-invalid-type.txt
+            exit 1
+          fi
+
+          set +e
+          helm template prom charts/prometheus-operator \
+            --set prometheus.publish.enabled=true --set prometheus.publish.type=gateway \
+            --set prometheus.publish.gateway.name="" \
+            2>&1 | tee /tmp/publish-missing-gw-name.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for missing publish.gateway.name, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "publish.gateway.name is required" /tmp/publish-missing-gw-name.txt; then
+            echo "✓ Validation correctly failed for missing publish.gateway.name"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/publish-missing-gw-name.txt
+            exit 1
+          fi
+
+      - name: Test publish without a Service should fail
+        run: |
+          set +e
+          helm template prom charts/prometheus-operator \
+            --set prometheus.publish.enabled=true --set prometheus.service.enabled=false \
+            2>&1 | tee /tmp/publish-no-svc.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for publish without Service, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "Service is disabled" /tmp/publish-no-svc.txt; then
+            echo "✓ Validation correctly failed for publish without Service"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/publish-no-svc.txt
+            exit 1
+          fi
+
+      - name: Test list resources require name and spec
+        run: |
+          set +e
+          helm template prom charts/prometheus-operator \
+            --set 'serviceMonitors[0].spec.selector.matchLabels.app=x' \
+            2>&1 | tee /tmp/sm-missing-name.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for ServiceMonitor without name, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "serviceMonitors\[0\].name is required" /tmp/sm-missing-name.txt; then
+            echo "✓ Validation correctly failed for missing ServiceMonitor name"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/sm-missing-name.txt
+            exit 1
+          fi
+
+          set +e
+          helm template prom charts/prometheus-operator \
+            --set 'prometheusRules[0].name=missing-spec' \
+            2>&1 | tee /tmp/rule-missing-spec.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for PrometheusRule without spec, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "prometheusRules\[0\].spec is required" /tmp/rule-missing-spec.txt; then
+            echo "✓ Validation correctly failed for missing PrometheusRule spec"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/rule-missing-spec.txt
+            exit 1
+          fi
+
+      - name: Test PDB without minAvailable/maxUnavailable should fail
+        run: |
+          set +e
+          helm template prom charts/prometheus-operator \
+            --set prometheus.podDisruptionBudget.enabled=true \
+            2>&1 | tee /tmp/pdb-missing.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for PDB without minAvailable/maxUnavailable, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "neither minAvailable nor maxUnavailable is set" /tmp/pdb-missing.txt; then
+            echo "✓ Validation correctly failed for PDB without a disruption budget"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/pdb-missing.txt
+            exit 1
+          fi
+
   install-charts:
     runs-on: ubuntu-latest
     steps:

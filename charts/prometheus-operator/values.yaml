@@ -1,0 +1,345 @@
+# Default values for prometheus-operator.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+#
+# Requires the Prometheus Operator (and its CRDs) to already be installed in
+# the cluster. This chart does not install the operator itself.
+
+nameOverride: ""
+fullnameOverride: ""
+instanceOverride: ""
+
+prometheus:
+  enabled: true
+  # Prometheus CR name. The operator creates a StatefulSet named prometheus-<name>.
+  name: k8s
+  additionalLabels: {}
+  annotations: {}
+
+  # When true and alertmanager.enabled, inject spec.alerting.alertmanagers pointing
+  # at this chart's Alertmanager Service unless spec.alerting is already set.
+  linkAlertmanager: true
+
+  # Prometheus CR spec — passed through as-is (plus serviceAccountName / alerting
+  # injection described above). Empty selectors ({}) match all resources.
+  # See: https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.Prometheus
+  spec:
+    replicas: 1
+    retention: 15d
+    enableFeatures: []
+    nodeSelector:
+      kubernetes.io/os: linux
+    podMonitorNamespaceSelector: {}
+    podMonitorSelector: {}
+    probeNamespaceSelector: {}
+    probeSelector: {}
+    ruleNamespaceSelector: {}
+    ruleSelector: {}
+    scrapeConfigNamespaceSelector: {}
+    scrapeConfigSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelector: {}
+    securityContext:
+      fsGroup: 2000
+      runAsNonRoot: true
+      runAsUser: 1000
+    # storage:
+    #   volumeClaimTemplate:
+    #     spec:
+    #       storageClassName: ceph-rbd
+    #       resources:
+    #         requests:
+    #           storage: 60Gi
+    # externalLabels:
+    #   prometheus_cluster: prd
+    # thanos:
+    #   objectStorageConfig:
+    #     key: thanos.yaml
+    #     name: thanos-objstore-config
+
+  serviceAccount:
+    create: true
+    name: ""
+    automountServiceAccountToken: true
+    annotations: {}
+    # Cluster-wide scrape permissions. Set to [] to skip creating a ClusterRole.
+    clusterRoleRules:
+      - apiGroups: [""]
+        resources:
+          - nodes
+          - nodes/metrics
+          - services
+          - endpoints
+          - pods
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups: [""]
+        resources:
+          - configmaps
+        verbs: ["get"]
+      - apiGroups:
+          - networking.k8s.io
+        resources:
+          - ingresses
+        verbs: ["get", "list", "watch"]
+      - nonResourceURLs:
+          - /metrics
+        verbs:
+          - get
+    roleRules: []
+
+  service:
+    enabled: true
+    # Defaults to prometheus-<prometheus.name>
+    name: ""
+    type: ClusterIP
+    sessionAffinity: ClientIP
+    additionalLabels: {}
+    annotations: {}
+    # Override the default operator pod selector (app.kubernetes.io/name,
+    # app.kubernetes.io/instance, prometheus).
+    selector: {}
+    ports:
+      - name: web
+        port: 9090
+        targetPort: web
+      - name: reloader-web
+        port: 8080
+        targetPort: reloader-web
+
+  podDisruptionBudget:
+    enabled: false
+    # minAvailable and maxUnavailable are mutually exclusive — set only one
+    # maxUnavailable: 1
+    # minAvailable: 1
+    # unhealthyPodEvictionPolicy: IfHealthy
+    # Override the selector; defaults to the same labels as the Service.
+    selector: {}
+
+  # ServiceMonitor targeting this Prometheus Service (web + reloader-web).
+  serviceMonitor:
+    enabled: false
+    additionalLabels: {}
+    annotations: {}
+    interval: 30s
+
+  publish:
+    enabled: false
+    type: gateway # ingress | gateway
+
+    hosts:
+      - host: prometheus.example.local
+        # paths defaults to a single "/" Prefix path when omitted
+        paths:
+          - path: /
+            pathType: Prefix
+            # port: 9090  # Optional: otherwise uses the Service's "web" port
+
+    tlsEnabled: true
+    # Uncomment the following to use a pre-generated TLS Secret
+    # tlsSecretName: ""
+
+    ingress:
+      className: ""
+      annotations: {}
+        # kubernetes.io/ingress.class: nginx
+        # kubernetes.io/tls-acme: "true"
+      # Switch between different Ingress rule styles. Can be one of "rules", or "defaultBackend"
+      ruleType: "rules"
+      # Set to false if TLS is enabled, but you're using an ingress class that doesn't support TLS cert secrets
+      tlsSecretEnabled: true
+
+    gateway:
+      name: public
+      namespace: envoy-gateway-system
+      # Applied to the generated HTTPRoute only
+      annotations: {}
+
+      # Optional if using ListenerSet
+      listenerSet:
+        enabled: false
+        # Applied to the generated ListenerSet only. Useful for cert-manager annotations
+        # (e.g. cert-manager.io/cluster-issuer), since the ListenerSet is what holds the
+        # TLS certificateRefs, not the HTTPRoute.
+        annotations: {}
+
+      # Because HTTPRoute rules are so extensible, it is complicated to generate a catch-all set of generic rules
+      # from "hosts" above. This chart provides a minimal PathPrefix matcher and backendRef rule per host/path by
+      # default, but rules can be defined here instead and are provided to the HTTPRoute as-is.
+      # See the HTTPRoute documentation for configuration details: https://gateway-api.sigs.k8s.io/api-types/httproute/
+      # rules: {}
+
+alertmanager:
+  enabled: true
+  # Alertmanager CR name. The operator creates a StatefulSet named alertmanager-<name>.
+  name: main
+  additionalLabels: {}
+  annotations: {}
+
+  # Alertmanager CR spec — passed through as-is (plus serviceAccountName injection).
+  # See: https://prometheus-operator.dev/docs/api-reference/api/#monitoring.coreos.com/v1.Alertmanager
+  spec:
+    replicas: 1
+    nodeSelector:
+      kubernetes.io/os: linux
+    alertmanagerConfigSelector: {}
+    alertmanagerConfigNamespaceSelector: {}
+    # alertmanagerConfigMatcherStrategy:
+    #   type: None
+    securityContext:
+      fsGroup: 2000
+      runAsNonRoot: true
+      runAsUser: 1000
+    # storage:
+    #   volumeClaimTemplate:
+    #     spec:
+    #       storageClassName: ceph-rbd
+    #       resources:
+    #         requests:
+    #           storage: 1Gi
+
+  serviceAccount:
+    create: true
+    name: ""
+    automountServiceAccountToken: false
+    annotations: {}
+    clusterRoleRules: []
+    roleRules: []
+
+  service:
+    enabled: true
+    # Defaults to alertmanager-<alertmanager.name>
+    name: ""
+    type: ClusterIP
+    sessionAffinity: ClientIP
+    additionalLabels: {}
+    annotations: {}
+    selector: {}
+    ports:
+      - name: web
+        port: 9093
+        targetPort: web
+      - name: reloader-web
+        port: 8080
+        targetPort: reloader-web
+
+  podDisruptionBudget:
+    enabled: false
+    # minAvailable and maxUnavailable are mutually exclusive — set only one
+    # maxUnavailable: 1
+    # minAvailable: 1
+    # unhealthyPodEvictionPolicy: IfHealthy
+    selector: {}
+
+  serviceMonitor:
+    enabled: false
+    additionalLabels: {}
+    annotations: {}
+    interval: 30s
+
+  publish:
+    enabled: false
+    type: gateway # ingress | gateway
+
+    hosts:
+      - host: alertmanager.example.local
+        paths:
+          - path: /
+            pathType: Prefix
+
+    tlsEnabled: true
+    # tlsSecretName: ""
+
+    ingress:
+      className: ""
+      annotations: {}
+      ruleType: "rules"
+      tlsSecretEnabled: true
+
+    gateway:
+      name: public
+      namespace: envoy-gateway-system
+      annotations: {}
+      listenerSet:
+        enabled: false
+        annotations: {}
+      # rules: {}
+
+# Arbitrary Prometheus Operator CRs. Each entry requires "name" and "spec".
+# The spec is passed through as-is. Optional: apiVersion, additionalLabels, annotations.
+#
+# NOTE: AlertmanagerConfig and PrometheusRule specs often contain Go templates
+# (e.g. {{ "{{" }} $labels.instance {{ "}}" }}). Quote those strings or wrap them
+# in backticks so Helm does not interpret them.
+
+alertmanagerConfigs: []
+#  - name: discord
+#    apiVersion: monitoring.coreos.com/v1alpha1
+#    additionalLabels:
+#      alertmanagerConfig: discord
+#    spec:
+#      receivers:
+#        - name: discord-receiver
+#          discordConfigs:
+#            - apiURL:
+#                name: webhook-secret
+#                key: webhook
+#      route:
+#        groupBy:
+#          - job
+#        receiver: discord-receiver
+
+scrapeConfigs: []
+#  - name: synology
+#    apiVersion: monitoring.coreos.com/v1alpha1
+#    spec:
+#      staticConfigs:
+#        - labels:
+#            instance_name: syn1
+#          targets:
+#            - 192.168.20.100:9100
+
+prometheusRules: []
+#  - name: monitoring-stack-rules
+#    spec:
+#      groups:
+#        - name: monitoring-stack
+#          rules:
+#            - alert: PrometheusTargetDown
+#              expr: up == 0
+#              for: 10m
+#              labels:
+#                severity: critical
+#              annotations:
+#                title: "Scrape target down"
+
+serviceMonitors: []
+#  - name: kubelet
+#    additionalLabels:
+#      app.kubernetes.io/name: kubelet
+#    spec:
+#      endpoints:
+#        - interval: 30s
+#          port: https-metrics
+#          scheme: https
+#          tlsConfig:
+#            insecureSkipVerify: true
+#      jobLabel: app.kubernetes.io/name
+#      namespaceSelector:
+#        matchNames:
+#          - kube-system
+#      selector:
+#        matchLabels:
+#          app.kubernetes.io/name: kubelet
+
+podMonitors: []
+#  - name: example
+#    spec:
+#      selector:
+#        matchLabels:
+#          app: example
+#      podMetricsEndpoints:
+#        - port: metrics
+#          interval: 30s

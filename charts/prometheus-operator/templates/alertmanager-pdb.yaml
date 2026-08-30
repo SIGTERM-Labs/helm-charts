@@ -1,0 +1,32 @@
+{{- if and .Values.alertmanager.enabled .Values.alertmanager.podDisruptionBudget.enabled }}
+{{- $pdb := .Values.alertmanager.podDisruptionBudget }}
+{{- if and (kindIs "invalid" $pdb.minAvailable) (kindIs "invalid" $pdb.maxUnavailable) }}
+{{- fail "alertmanager.podDisruptionBudget.enabled is true but neither minAvailable nor maxUnavailable is set. Set exactly one to avoid a PDB that blocks all voluntary disruptions (disruptionsAllowed: 0)." }}
+{{- end }}
+{{- if and (not (kindIs "invalid" $pdb.minAvailable)) (not (kindIs "invalid" $pdb.maxUnavailable)) }}
+{{- fail "alertmanager.podDisruptionBudget.minAvailable and maxUnavailable are mutually exclusive — set only one." }}
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "prometheus-operator.alertmanager.serviceName" . }}
+  labels:
+    {{- include "prometheus-operator.alertmanager.labels" . | nindent 4 }}
+spec:
+  {{- if not (kindIs "invalid" $pdb.minAvailable) }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- end }}
+  {{- if not (kindIs "invalid" $pdb.maxUnavailable) }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
+  {{- end }}
+  {{- if $pdb.unhealthyPodEvictionPolicy }}
+  unhealthyPodEvictionPolicy: {{ $pdb.unhealthyPodEvictionPolicy }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- if and $pdb.selector (gt (len $pdb.selector) 0) }}
+      {{- toYaml $pdb.selector | nindent 6 }}
+      {{- else }}
+      {{- include "prometheus-operator.alertmanager.selectorLabels" . | nindent 6 }}
+      {{- end }}
+{{- end }}

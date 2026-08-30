@@ -1,0 +1,10 @@
+{{- if .Values.prometheus.enabled }}
+{{- include "prometheus-operator.publish" (dict
+  "root" .
+  "component" "prometheus"
+  "publish" .Values.prometheus.publish
+  "name" (include "prometheus-operator.prometheus.serviceName" .)
+  "port" (include "prometheus-operator.prometheus.webPort" .)
+  "labels" (include "prometheus-operator.prometheus.labels" .)
+) }}
+{{- end }}

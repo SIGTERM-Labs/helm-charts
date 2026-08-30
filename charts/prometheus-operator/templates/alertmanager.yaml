@@ -1,0 +1,21 @@
+{{- if .Values.alertmanager.enabled }}
+{{- $spec := deepCopy (.Values.alertmanager.spec | default dict) }}
+{{- if and .Values.alertmanager.serviceAccount.create (not $spec.serviceAccountName) }}
+{{- $_ := set $spec "serviceAccountName" (include "prometheus-operator.alertmanager.serviceAccountName" .) }}
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: Alertmanager
+metadata:
+  name: {{ include "prometheus-operator.alertmanager.name" . }}
+  labels:
+    {{- include "prometheus-operator.alertmanager.labels" . | nindent 4 }}
+    {{- with .Values.alertmanager.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.alertmanager.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- toYaml $spec | nindent 2 }}
+{{- end }}

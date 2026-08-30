@@ -1,0 +1,5 @@
+apiVersion: v2
+name: prometheus-operator
+description: Prometheus Operator resources (Prometheus, Alertmanager, and supporting CRs)
+type: application
+version: 0.1.0

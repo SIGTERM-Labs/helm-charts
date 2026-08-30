@@ -1,0 +1,10 @@
+{{- if .Values.alertmanager.enabled }}
+{{- include "prometheus-operator.publish" (dict
+  "root" .
+  "component" "alertmanager"
+  "publish" .Values.alertmanager.publish
+  "name" (include "prometheus-operator.alertmanager.serviceName" .)
+  "port" (include "prometheus-operator.alertmanager.webPort" .)
+  "labels" (include "prometheus-operator.alertmanager.labels" .)
+) }}
+{{- end }}

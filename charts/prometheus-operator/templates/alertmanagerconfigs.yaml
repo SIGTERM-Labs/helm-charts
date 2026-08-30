@@ -1,0 +1,9 @@
+{{- if .Values.alertmanagerConfigs }}
+{{- include "prometheus-operator.monitoringList" (dict
+  "root" .
+  "items" .Values.alertmanagerConfigs
+  "kind" "AlertmanagerConfig"
+  "apiVersion" "monitoring.coreos.com/v1alpha1"
+  "listName" "alertmanagerConfigs"
+) }}
+{{- end }}

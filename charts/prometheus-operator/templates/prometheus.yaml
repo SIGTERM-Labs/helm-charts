@@ -1,0 +1,24 @@
+{{- if .Values.prometheus.enabled }}
+{{- $spec := deepCopy (.Values.prometheus.spec | default dict) }}
+{{- if and .Values.prometheus.serviceAccount.create (not $spec.serviceAccountName) }}
+{{- $_ := set $spec "serviceAccountName" (include "prometheus-operator.prometheus.serviceAccountName" .) }}
+{{- end }}
+{{- if and .Values.prometheus.linkAlertmanager .Values.alertmanager.enabled (not $spec.alerting) }}
+{{- $_ := set $spec "alerting" (dict "alertmanagers" (list (dict "apiVersion" "v2" "name" (include "prometheus-operator.alertmanager.serviceName" .) "namespace" .Release.Namespace "port" "web"))) }}
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: {{ include "prometheus-operator.prometheus.name" . }}
+  labels:
+    {{- include "prometheus-operator.prometheus.labels" . | nindent 4 }}
+    {{- with .Values.prometheus.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.prometheus.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- toYaml $spec | nindent 2 }}
+{{- end }}
