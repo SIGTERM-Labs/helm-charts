@@ -1,0 +1,9 @@
+{{- if .Values.prometheusRules }}
+{{- include "prometheus-operator.monitoringList" (dict
+  "root" .
+  "items" .Values.prometheusRules
+  "kind" "PrometheusRule"
+  "apiVersion" "monitoring.coreos.com/v1"
+  "listName" "prometheusRules"
+) }}
+{{- end }}

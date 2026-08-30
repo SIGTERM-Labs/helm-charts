@@ -1,0 +1,9 @@
+{{- if .Values.scrapeConfigs }}
+{{- include "prometheus-operator.monitoringList" (dict
+  "root" .
+  "items" .Values.scrapeConfigs
+  "kind" "ScrapeConfig"
+  "apiVersion" "monitoring.coreos.com/v1alpha1"
+  "listName" "scrapeConfigs"
+) }}
+{{- end }}

@@ -1,0 +1,24 @@
+{{- if and .Values.alertmanager.enabled .Values.alertmanager.service.enabled .Values.alertmanager.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "prometheus-operator.alertmanager.serviceName" . }}
+  labels:
+    {{- include "prometheus-operator.alertmanager.labels" . | nindent 4 }}
+    {{- with .Values.alertmanager.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.alertmanager.serviceMonitor.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  endpoints:
+    - interval: {{ .Values.alertmanager.serviceMonitor.interval }}
+      port: web
+    - interval: {{ .Values.alertmanager.serviceMonitor.interval }}
+      port: reloader-web
+  selector:
+    matchLabels:
+      {{- include "prometheus-operator.alertmanager.labels" . | nindent 6 }}
+{{- end }}

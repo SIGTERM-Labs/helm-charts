@@ -1,0 +1,20 @@
+# Verify publish.type=gateway renders HTTPRoute + ListenerSet for Prometheus.
+prometheus:
+  enabled: true
+  publish:
+    enabled: true
+    type: gateway
+    hosts:
+      - host: prometheus.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tlsEnabled: true
+    gateway:
+      name: public
+      namespace: envoy-gateway-system
+      listenerSet:
+        enabled: true
+
+alertmanager:
+  enabled: false

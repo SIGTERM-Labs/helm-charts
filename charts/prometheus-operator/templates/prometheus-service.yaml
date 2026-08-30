@@ -1,0 +1,24 @@
+{{- if and .Values.prometheus.enabled .Values.prometheus.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "prometheus-operator.prometheus.serviceName" . }}
+  labels:
+    {{- include "prometheus-operator.prometheus.labels" . | nindent 4 }}
+    {{- with .Values.prometheus.service.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.prometheus.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.prometheus.service.type }}
+  {{- with .Values.prometheus.service.sessionAffinity }}
+  sessionAffinity: {{ . }}
+  {{- end }}
+  ports:
+    {{- toYaml .Values.prometheus.service.ports | nindent 4 }}
+  selector:
+    {{- include "prometheus-operator.prometheus.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,149 @@
+# Exercise Prometheus + Alertmanager accompanied resources and list CRs.
+prometheus:
+  enabled: true
+  name: k8s
+  spec:
+    replicas: 1
+    retention: 14d
+    externalLabels:
+      prometheus_cluster: test
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: ceph-rbd
+          resources:
+            requests:
+              storage: 60Gi
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  serviceMonitor:
+    enabled: true
+  publish:
+    enabled: true
+    type: ingress
+    hosts:
+      - host: prometheus.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tlsEnabled: true
+    ingress:
+      className: nginx
+      ruleType: rules
+      tlsSecretEnabled: true
+
+alertmanager:
+  enabled: true
+  name: main
+  spec:
+    replicas: 3
+    alertmanagerConfigSelector:
+      matchLabels:
+        alertmanagerConfig: discord
+    alertmanagerConfigMatcherStrategy:
+      type: None
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+  serviceMonitor:
+    enabled: true
+  publish:
+    enabled: true
+    type: gateway
+    hosts:
+      - host: alertmanager.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tlsEnabled: true
+    gateway:
+      name: default-internal
+      namespace: envoy-gateway-system
+      listenerSet:
+        enabled: true
+
+alertmanagerConfigs:
+  - name: discord
+    additionalLabels:
+      alertmanagerConfig: discord
+    spec:
+      receivers:
+        - name: discord-receiver
+      route:
+        receiver: discord-receiver
+        groupBy:
+          - job
+
+scrapeConfigs:
+  - name: synology
+    spec:
+      staticConfigs:
+        - labels:
+            instance_name: syn1
+          targets:
+            - 192.168.20.100:9100
+            - 192.168.20.100:9633
+  - name: proxmox-ceph
+    spec:
+      staticConfigs:
+        - labels:
+            instance_name: cmp1
+          targets:
+            - 192.168.1.194:9100
+
+prometheusRules:
+  - name: monitoring-stack-rules
+    spec:
+      groups:
+        - name: monitoring-stack
+          rules:
+            - alert: PrometheusTargetDown
+              expr: up == 0
+              for: 10m
+              labels:
+                severity: critical
+              annotations:
+                title: Scrape target down
+
+serviceMonitors:
+  - name: kubelet
+    additionalLabels:
+      app.kubernetes.io/name: kubelet
+    spec:
+      endpoints:
+        - interval: 30s
+          port: https-metrics
+          scheme: https
+          tlsConfig:
+            insecureSkipVerify: true
+      jobLabel: app.kubernetes.io/name
+      namespaceSelector:
+        matchNames:
+          - kube-system
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: kubelet
+  - name: kube-apiserver
+    spec:
+      endpoints:
+        - interval: 30s
+          port: https
+          scheme: https
+      jobLabel: component
+      namespaceSelector:
+        matchNames:
+          - default
+      selector:
+        matchLabels:
+          component: apiserver
+
+podMonitors:
+  - name: example-pods
+    spec:
+      selector:
+        matchLabels:
+          app: example
+      podMetricsEndpoints:
+        - port: metrics
+          interval: 30s
