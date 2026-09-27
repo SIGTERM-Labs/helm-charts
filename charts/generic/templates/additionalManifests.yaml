@@ -1,0 +1,12 @@
+{{- range $i, $manifest := .Values.additionalManifests }}
+{{- if $manifest }}
+---
+{{- if kindIs "string" $manifest }}
+{{ tpl $manifest $ }}
+{{- else }}
+{{- $_ := required (printf "additionalManifests[%d].apiVersion is required" $i) $manifest.apiVersion }}
+{{- $_ := required (printf "additionalManifests[%d].kind is required" $i) $manifest.kind }}
+{{ toYaml $manifest }}
+{{- end }}
+{{- end }}
+{{- end }}

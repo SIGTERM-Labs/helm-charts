@@ -267,6 +267,38 @@ certificates: []
 #      #   - server auth
 #      #   - client auth
 
+# Arbitrary extra Kubernetes manifests to include in the release. Any kind is allowed.
+# Each entry is either:
+#   - a YAML object (one manifest), emitted as-is with no templating, so literal "{{"
+#     (e.g. in a PrometheusRule) passes through untouched, or
+#   - a string (one or more manifests, separated by "---"), rendered with "tpl" so it can
+#     reference chart values and helpers, e.g. {{ include "generic.fullname" . }}.
+#     To emit a literal "{{" in a string entry, escape it as {{ "{{" }}.
+additionalManifests: []
+#  - apiVersion: v1
+#    kind: ConfigMap
+#    metadata:
+#      name: my-extra-config
+#    data:
+#      key: value
+#  - |
+#    apiVersion: v1
+#    kind: Secret
+#    metadata:
+#      name: {{ .Release.Name }}-extra
+#    stringData:
+#      token: abc123
+#    ---
+#    apiVersion: policy/v1
+#    kind: PodDisruptionBudget
+#    metadata:
+#      name: {{ .Release.Name }}-extra
+#    spec:
+#      maxUnavailable: 1
+#      selector:
+#        matchLabels:
+#          {{- include "generic.selectorLabels" . | nindent 10 }}
+
 networkPolicy:
   enabled: false
   policyTypes: []
