@@ -204,37 +204,6 @@ publish:
     # See the HTTPRoute documentation for configuration details: https://gateway-api.sigs.k8s.io/api-types/httproute/
     # rules: {}
 
-# Contour-specific routing. Assumes the Contour ingress controller and its
-# projectcontour.io/v1 HTTPProxy CRD are already installed in the cluster.
-contour:
-  httpProxy:
-    enabled: false
-    annotations: {}
-    # The fully qualified domain name that this proxy answers for.
-    fqdn: chart-example.local
-    tls:
-      enabled: true
-      # Reuse a pre-existing TLS Secret. Defaults to "<release>-tls" (the same
-      # default the ingress TLS block uses). Point a cert-manager Certificate
-      # (see "certificates" below) at this secretName to have it auto-populated.
-      # secretName: ""
-      # Terminate TLS at Contour (default) or pass encrypted traffic straight
-      # through to the backend. When passthrough is true, secretName is ignored
-      # and Contour routes at L4: the chart emits a default "tcpproxy" to the
-      # Service (not HTTP "routes"). Override with tcpproxy below if needed.
-      passthrough: false
-      # minimumProtocolVersion: "1.2"
-    # Extra HTTPProxy "includes" (delegated routing), passed through as-is.
-    # includes: []
-    # By default a single route sends all traffic ("/") to the chart's Service
-    # on service.port (or, when tls.passthrough is true, a tcpproxy to it).
-    # Provide routes here to override with your own, passed to the HTTPProxy
-    # as-is. See https://projectcontour.io/docs/main/config/api/
-    # routes: []
-    # L4 TCP proxying, passed through as-is. Used for TLS passthrough (and takes
-    # precedence over the generated default). Mutually exclusive with routes.
-    # tcpproxy: {}
-
 # cert-manager Certificate resources (cert-manager.io/v1).
 # Each entry creates one Certificate. The full Certificate spec is passed through
 # as-is, so any field supported by cert-manager can be set here.
