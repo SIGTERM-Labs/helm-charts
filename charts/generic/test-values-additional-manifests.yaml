@@ -1,0 +1,29 @@
+# Test values to verify additionalManifests renders arbitrary resources (object and string forms)
+mode: deployment
+replicaCount: 1
+image:
+  repository: nginx
+  tag: latest
+additionalManifests:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: literal-extra
+    data:
+      template: "{{ .Release.Name }}"
+  - |
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: {{ .Release.Name }}-extra-secret
+    stringData:
+      token: abc123
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: {{ .Release.Name }}-extra-clusterrole
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["get", "list"]

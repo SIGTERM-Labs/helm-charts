@@ -792,3 +792,43 @@ jobs:
             cat /tmp/publish-missing-gw-name.txt
             exit 1
           fi
+
+      - name: Test additionalManifests - verify object and string manifests render
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-additional-manifests.yaml \
+            --show-only templates/additionalManifests.yaml > /tmp/additional-manifests.yaml
+          for expected in "kind: ConfigMap" "kind: Secret" "kind: ClusterRole" "name: literal-extra" "template: '{{ .Release.Name }}'" "name: test-extra-secret" "name: test-extra-clusterrole"; do
+            if grep -q "$expected" /tmp/additional-manifests.yaml; then
+              echo "✓ Found \"$expected\""
+            else
+              echo "✗ Expected \"$expected\" not found"
+              cat /tmp/additional-manifests.yaml
+              exit 1
+            fi
+          done
+          DOC_COUNT=$(grep -c "^# Source: generic/templates/additionalManifests.yaml" /tmp/additional-manifests.yaml || echo "0")
+          if [ "$DOC_COUNT" -eq 3 ]; then
+            echo "✓ Correctly rendered 3 additional manifests"
+          else
+            echo "✗ Expected 3 additional manifests, found $DOC_COUNT"
+            cat /tmp/additional-manifests.yaml
+            exit 1
+          fi
+
+      - name: Test additionalManifests - missing kind should fail
+        run: |
+          set +e
+          helm template test ./charts/generic --set 'additionalManifests[0].apiVersion=v1' 2>&1 | tee /tmp/additional-manifests-missing-kind.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✗ Expected validation failure for additional manifest without kind, but helm template succeeded"
+            exit 1
+          fi
+          if grep -q "additionalManifests\[0\].kind is required" /tmp/additional-manifests-missing-kind.txt; then
+            echo "✓ Validation correctly failed with expected error message"
+          else
+            echo "✗ Validation failed but with unexpected error message"
+            cat /tmp/additional-manifests-missing-kind.txt
+            exit 1
+          fi
