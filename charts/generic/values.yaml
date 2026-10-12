@@ -145,6 +145,7 @@ additionalServices: []
 #  - name: service-name # If omitted, it will be named like the primary service, with an incrementing number
 #    type: LoadBalancer
 #    loadBalancerClass: ""
+#    externalTrafficPolicy: "" # Local preserves the client source IP (LoadBalancer/NodePort only)
 #    additionalLabels: {}
 #    # application: my-application
 #    # prometheus: application-metrics
