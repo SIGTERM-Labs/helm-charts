@@ -18,6 +18,9 @@ spec:
   {{- if and .Values.service.loadBalancerClass (ne .Values.service.loadBalancerClass "") }}
   loadBalancerClass: {{ .Values.service.loadBalancerClass }}
   {{- end }}
+  {{- with .Values.service.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ . }}
+  {{- end }}
   ports:
     - port: {{ .Values.service.port }}
       targetPort: {{ $containerPortName }}
