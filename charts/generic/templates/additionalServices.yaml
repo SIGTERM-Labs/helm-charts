@@ -20,6 +20,9 @@ spec:
   {{- if and $svc.loadBalancerClass (ne $svc.loadBalancerClass "") }}
   loadBalancerClass: {{ $svc.loadBalancerClass }}
   {{- end }}
+  {{- with $svc.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ . }}
+  {{- end }}
   ports:
     {{- toYaml $svc.ports | nindent 4 }}
   selector:
