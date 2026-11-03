@@ -426,6 +426,16 @@ hostVolumes: []
 #    hostPath: /path/on/host/config
 #    mountPath: /config
 
+# Projected service account tokens for an audience other than the API server's,
+# e.g. to trade for cloud or S3 credentials (AssumeRoleWithWebIdentity). The
+# kubelet rotates the file before it expires. Mounted read-only in every container.
+serviceAccountTokens: []
+#  - name: s3
+#    mountPath: /var/run/secrets/s3
+#    audience: https://s3.example.com
+#    expirationSeconds: 3600 # optional, default 3600
+#    path: token # optional, default token
+
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
   # choice for the user. This also increases chances charts run on environments with little

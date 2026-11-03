@@ -689,6 +689,20 @@ jobs:
             exit 1
           fi
 
+      - name: Test serviceAccountTokens - verify projected token volume and mount
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-service-account-tokens.yaml \
+            --show-only templates/workload.yaml > /tmp/service-account-tokens.yaml
+          for expected in "name: sat-s3" "mountPath: /var/run/secrets/s3" "audience: \"https://s3.example.com\"" "expirationSeconds: 3600" "path: token"; do
+            if grep -q "$expected" /tmp/service-account-tokens.yaml; then
+              echo "✓ Found \"$expected\""
+            else
+              echo "✗ Expected \"$expected\" not found"
+              cat /tmp/service-account-tokens.yaml
+              exit 1
+            fi
+          done
+
       - name: Test additionalManifests - missing kind should fail
         run: |
           set +e

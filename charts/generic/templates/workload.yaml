@@ -113,6 +113,11 @@ spec:
             - name: {{ .name }}
               mountPath: {{ .mountPath }}
             {{- end }}
+            {{- range $.Values.serviceAccountTokens }}
+            - name: sat-{{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: true
+            {{- end }}
             {{- range $.Values.configmapFiles }}
             - name: configmap-files
               mountPath: {{ .mountPath }}/{{ .filename }}
@@ -204,6 +209,11 @@ spec:
             {{- range .Values.hostVolumes }}
             - name: {{ .name }}
               mountPath: {{ .mountPath }}
+            {{- end }}
+            {{- range .Values.serviceAccountTokens }}
+            - name: sat-{{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: true
             {{- end }}
             {{- range $.Values.configmapFiles }}
             - name: configmap-files
@@ -313,6 +323,11 @@ spec:
             - name: {{ .name }}
               mountPath: {{ .mountPath }}
             {{- end }}
+            {{- range $.Values.serviceAccountTokens }}
+            - name: sat-{{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: true
+            {{- end }}
             {{- range $.Values.configmapFiles }}
             - name: configmap-files
               mountPath: {{ .mountPath }}/{{ .filename }}
@@ -388,6 +403,15 @@ spec:
         - name: {{ .name }}
           hostPath:
             path: {{ .hostPath }}
+        {{- end }}
+        {{- range .Values.serviceAccountTokens }}
+        - name: sat-{{ .name }}
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: {{ required "serviceAccountTokens[].audience is required" .audience | quote }}
+                  expirationSeconds: {{ .expirationSeconds | default 3600 }}
+                  path: {{ .path | default "token" }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
