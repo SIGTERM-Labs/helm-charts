@@ -171,6 +171,9 @@ publish:
         - path: /
           pathType: Prefix
           # port: 8080  # Optional: specify a custom port for this path, otherwise uses service.port
+          # timeouts:  # Optional, gateway only: the HTTPRoute rule's timeouts, e.g. for a long download
+          #   request: 10m
+          #   backendRequest: 10m
 
   tlsEnabled: true
   # Uncomment the following to use a pre-generated TLS Secret
