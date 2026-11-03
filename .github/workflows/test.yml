@@ -689,6 +689,26 @@ jobs:
             exit 1
           fi
 
+      - name: Test HTTPRoute timeouts - rendered only on paths that set them
+        run: |
+          helm template test ./charts/generic -f ./charts/generic/test-values-httproute-timeouts.yaml \
+            --show-only templates/httproute.yaml > /tmp/httproute-timeouts.yaml
+          if [ "$(grep -c 'timeouts:' /tmp/httproute-timeouts.yaml)" -eq 1 ] && grep -q 'request: 10m' /tmp/httproute-timeouts.yaml; then
+            echo "✓ Only the /downloads rule has timeouts"
+          else
+            echo "✗ Expected exactly one rule with request: 10m"
+            cat /tmp/httproute-timeouts.yaml
+            exit 1
+          fi
+          helm template test ./charts/generic --set publish.enabled=true --set publish.type=gateway \
+            --show-only templates/httproute.yaml > /tmp/httproute-default.yaml
+          if grep -q 'timeouts:' /tmp/httproute-default.yaml; then
+            echo "✗ Default HTTPRoute should have no timeouts"
+            cat /tmp/httproute-default.yaml
+            exit 1
+          fi
+          echo "✓ Default HTTPRoute has no timeouts"
+
       - name: Test serviceAccountTokens - verify projected token volume and mount
         run: |
           helm template test ./charts/generic -f ./charts/generic/test-values-service-account-tokens.yaml \

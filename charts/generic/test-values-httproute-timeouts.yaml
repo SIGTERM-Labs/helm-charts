@@ -1,0 +1,18 @@
+# Test values to verify per-path HTTPRoute timeouts render only where set
+mode: deployment
+replicaCount: 1
+image:
+  repository: nginx
+  tag: latest
+publish:
+  enabled: true
+  type: gateway
+  hosts:
+    - host: example.com
+      paths:
+        - path: /downloads
+          pathType: Prefix
+          timeouts:
+            request: 10m
+        - path: /
+          pathType: Prefix
