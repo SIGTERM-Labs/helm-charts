@@ -411,7 +411,7 @@ spec:
               - serviceAccountToken:
                   audience: {{ required "serviceAccountTokens[].audience is required" .audience | quote }}
                   expirationSeconds: {{ .expirationSeconds | default 3600 }}
-                  path: {{ .path | default "token" }}
+                  path: {{ .path | default "token" | quote }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
