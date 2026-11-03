@@ -164,6 +164,11 @@ initContainers:
       - name: {{ .name }}
         mountPath: {{ .mountPath }}
       {{- end }}
+      {{- range $.Values.serviceAccountTokens }}
+      - name: sat-{{ .name }}
+        mountPath: {{ .mountPath }}
+        readOnly: true
+      {{- end }}
 {{- end }}
 {{- end }}
 containers:
@@ -244,6 +249,11 @@ containers:
       - name: {{ .name }}
         mountPath: {{ .mountPath }}
       {{- end }}
+      {{- range .Values.serviceAccountTokens }}
+      - name: sat-{{ .name }}
+        mountPath: {{ .mountPath }}
+        readOnly: true
+      {{- end }}
     resources:
       {{- toYaml .Values.resources | nindent 6 }}
 volumes:
@@ -296,6 +306,15 @@ volumes:
   - name: {{ .name }}
     hostPath:
       path: {{ .hostPath }}
+  {{- end }}
+  {{- range .Values.serviceAccountTokens }}
+  - name: sat-{{ .name }}
+    projected:
+      sources:
+        - serviceAccountToken:
+            audience: {{ required "serviceAccountTokens[].audience is required" .audience | quote }}
+            expirationSeconds: {{ .expirationSeconds | default 3600 }}
+            path: {{ .path | default "token" | quote }}
   {{- end }}
 {{- with .Values.nodeSelector }}
 nodeSelector:
