@@ -365,6 +365,9 @@ spec:
             {{- range $.Values.configmapFiles }}
               - key: {{ .filename }}
                 path: {{ .filename }}
+                {{- with .mode }}
+                mode: {{ . }}
+                {{- end }}
             {{- end }}
             {{- end }}
         - name: secret-files

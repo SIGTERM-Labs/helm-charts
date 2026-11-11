@@ -709,6 +709,22 @@ jobs:
           fi
           echo "✓ Default HTTPRoute has no timeouts"
 
+      - name: Test configmapFiles mode - rendered only on files that set it
+        run: |
+          for m in deployment job; do
+            if [ "$m" = deployment ]; then tpl=templates/workload.yaml; else tpl=templates/job.yaml; fi
+            helm template test ./charts/generic -f ./charts/generic/test-values-configmap-files-mode.yaml \
+              --set mode=$m --show-only $tpl > /tmp/configmap-files-mode-$m.yaml
+            if [ "$(grep -c 'mode: 493' /tmp/configmap-files-mode-$m.yaml)" -eq 1 ] && \
+               grep -A2 'key: entrypoint.sh' /tmp/configmap-files-mode-$m.yaml | grep -q 'mode: 493'; then
+              echo "✓ $m: only entrypoint.sh has mode 493 (0755)"
+            else
+              echo "✗ $m: expected mode 493 on entrypoint.sh only"
+              cat /tmp/configmap-files-mode-$m.yaml
+              exit 1
+            fi
+          done
+
       - name: Test serviceAccountTokens - verify projected token volume and mount
         run: |
           helm template test ./charts/generic -f ./charts/generic/test-values-service-account-tokens.yaml \

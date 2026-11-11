@@ -1,0 +1,17 @@
+# Test values to verify configmapFiles mode renders only on files that set it
+mode: deployment
+replicaCount: 1
+image:
+  repository: nginx
+  tag: latest
+configmapFiles:
+  - mountPath: /usr/local/bin
+    filename: entrypoint.sh
+    mode: 0755
+    content: |
+      #!/bin/sh
+      echo hello
+  - mountPath: /etc/config
+    filename: app.conf
+    content: |
+      key=value

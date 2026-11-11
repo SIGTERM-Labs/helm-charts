@@ -380,6 +380,14 @@ configmapFiles: []
 #    content: |
 #      file=content
 #      goes=here
+#  - mountPath: /usr/local/bin
+#    filename: entrypoint.sh
+#    # Optional file mode, e.g. to make a script executable. Write it as octal
+#    # (0755) or decimal (493); defaults to the volume's 0644.
+#    mode: 0755
+#    content: |
+#      #!/bin/sh
+#      echo hello
 
 # Persistent volumes - works for both deployment and stateful modes
 # When mode is "deployment": creates PersistentVolumeClaims (one per volume)
