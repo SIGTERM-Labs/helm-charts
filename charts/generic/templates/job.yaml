@@ -164,6 +164,11 @@ initContainers:
       - name: {{ .name }}
         mountPath: {{ .mountPath }}
       {{- end }}
+      {{- range $.Values.inlineVolumes }}
+      - name: {{ .name }}
+        mountPath: {{ .mountPath }}
+        readOnly: {{ .readOnly | default false }}
+      {{- end }}
       {{- range $.Values.serviceAccountTokens }}
       - name: sat-{{ .name }}
         mountPath: {{ .mountPath }}
@@ -249,6 +254,11 @@ containers:
       - name: {{ .name }}
         mountPath: {{ .mountPath }}
       {{- end }}
+      {{- range .Values.inlineVolumes }}
+      - name: {{ .name }}
+        mountPath: {{ .mountPath }}
+        readOnly: {{ .readOnly | default false }}
+      {{- end }}
       {{- range .Values.serviceAccountTokens }}
       - name: sat-{{ .name }}
         mountPath: {{ .mountPath }}
@@ -309,6 +319,10 @@ volumes:
   - name: {{ .name }}
     hostPath:
       path: {{ .hostPath }}
+  {{- end }}
+  {{- range .Values.inlineVolumes }}
+  - name: {{ .name }}
+    {{- required "inlineVolumes[].source is required" .source | toYaml | nindent 4 }}
   {{- end }}
   {{- range .Values.serviceAccountTokens }}
   - name: sat-{{ .name }}
