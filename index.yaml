@@ -4,6 +4,18 @@ entries:
   - annotations:
       attribute-from: https://github.com/Chia-Network/helm-charts
     apiVersion: v2
+    created: "2026-11-16T05:02:18.925150304Z"
+    description: A generic helm chart that handles a bunch of common application deploy
+      cases
+    digest: 8dddf6adde6e18cb6ae87d30bda98b8d72e513434c64878b853c49473ad882f7
+    name: generic
+    type: application
+    urls:
+    - https://github.com/SIGTERM-Labs/helm-charts/releases/download/generic-3.6.0/generic-3.6.0.tgz
+    version: 3.6.0
+  - annotations:
+      attribute-from: https://github.com/Chia-Network/helm-charts
+    apiVersion: v2
     created: "2026-11-11T01:10:52.974857811Z"
     description: A generic helm chart that handles a bunch of common application deploy
       cases
@@ -161,4 +173,4 @@ entries:
     urls:
     - https://github.com/SIGTERM-Labs/helm-charts/releases/download/prometheus-operator-0.1.0/prometheus-operator-0.1.0.tgz
     version: 0.1.0
-generated: "2026-11-11T01:10:52.974907524Z"
+generated: "2026-11-16T05:02:18.925178286Z"
