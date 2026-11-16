@@ -725,6 +725,35 @@ jobs:
             fi
           done
 
+      - name: Test inlineVolumes - pod volume and mount, no claim
+        run: |
+          for m in deployment stateful job; do
+            helm template test ./charts/generic -f ./charts/generic/test-values-inline-volumes.yaml \
+              --set mode=$m > /tmp/inline-volumes-$m.yaml
+            if grep -A3 -- '- name: media$' /tmp/inline-volumes-$m.yaml | grep -q 'server: 1.2.3.4' && \
+               grep -A2 -- '- name: scratch$' /tmp/inline-volumes-$m.yaml | grep -q 'sizeLimit: 1Gi' && \
+               grep -A2 -- '- name: media$' /tmp/inline-volumes-$m.yaml | grep -q 'readOnly: true' && \
+               grep -A2 -- '- name: scratch$' /tmp/inline-volumes-$m.yaml | grep -q 'readOnly: false'; then
+              echo "✓ $m: inline volumes and mounts rendered"
+            else
+              echo "✗ $m: inline volumes or mounts missing"
+              cat /tmp/inline-volumes-$m.yaml
+              exit 1
+            fi
+            if grep -qE 'kind: (PersistentVolume|PersistentVolumeClaim)$|claimName:' /tmp/inline-volumes-$m.yaml || \
+               grep -A1 'volumeClaimTemplates:' /tmp/inline-volumes-$m.yaml | grep -q 'metadata:'; then
+              echo "✗ $m: inline volumes created a claim"
+              exit 1
+            fi
+          done
+          if helm template test ./charts/generic -f ./charts/generic/test-values-inline-volumes.yaml \
+              --set 'inlineVolumes[0].source=null' 2>&1 | grep -q 'inlineVolumes\[\].source is required'; then
+            echo "✓ an entry without source fails"
+          else
+            echo "✗ an entry without source did not fail with the required error"
+            exit 1
+          fi
+
       - name: Test serviceAccountTokens - verify projected token volume and mount
         run: |
           helm template test ./charts/generic -f ./charts/generic/test-values-service-account-tokens.yaml \

@@ -1,0 +1,19 @@
+# Test values to verify inlineVolumes render a pod volume and a mount, with no claim
+mode: deployment
+replicaCount: 1
+image:
+  repository: nginx
+  tag: latest
+inlineVolumes:
+  - name: media
+    mountPath: /media
+    readOnly: true
+    source:
+      nfs:
+        server: 1.2.3.4
+        path: /path/on/nfs
+  - name: scratch
+    mountPath: /scratch
+    source:
+      emptyDir:
+        sizeLimit: 1Gi

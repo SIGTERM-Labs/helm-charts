@@ -113,6 +113,11 @@ spec:
             - name: {{ .name }}
               mountPath: {{ .mountPath }}
             {{- end }}
+            {{- range $.Values.inlineVolumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly | default false }}
+            {{- end }}
             {{- range $.Values.serviceAccountTokens }}
             - name: sat-{{ .name }}
               mountPath: {{ .mountPath }}
@@ -209,6 +214,11 @@ spec:
             {{- range .Values.hostVolumes }}
             - name: {{ .name }}
               mountPath: {{ .mountPath }}
+            {{- end }}
+            {{- range .Values.inlineVolumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly | default false }}
             {{- end }}
             {{- range .Values.serviceAccountTokens }}
             - name: sat-{{ .name }}
@@ -323,6 +333,11 @@ spec:
             - name: {{ .name }}
               mountPath: {{ .mountPath }}
             {{- end }}
+            {{- range $.Values.inlineVolumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly | default false }}
+            {{- end }}
             {{- range $.Values.serviceAccountTokens }}
             - name: sat-{{ .name }}
               mountPath: {{ .mountPath }}
@@ -406,6 +421,10 @@ spec:
         - name: {{ .name }}
           hostPath:
             path: {{ .hostPath }}
+        {{- end }}
+        {{- range .Values.inlineVolumes }}
+        - name: {{ .name }}
+          {{- required "inlineVolumes[].source is required" .source | toYaml | nindent 10 }}
         {{- end }}
         {{- range .Values.serviceAccountTokens }}
         - name: sat-{{ .name }}

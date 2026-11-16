@@ -437,6 +437,18 @@ hostVolumes: []
 #    hostPath: /path/on/host/config
 #    mountPath: /config
 
+# Volumes defined inline in the pod spec, for sources that need no claim, such as
+# an existing NFS export. source is any pod volume source and is copied as-is.
+# Mounted in every container.
+inlineVolumes: []
+#  - name: media
+#    mountPath: /media
+#    readOnly: false
+#    source:
+#      nfs:
+#        server: 1.2.3.4
+#        path: /path/on/nfs
+
 # Projected service account tokens for an audience other than the API server's,
 # e.g. to trade for cloud or S3 credentials (AssumeRoleWithWebIdentity). The
 # kubelet rotates the file before it expires. Mounted read-only in every container.
